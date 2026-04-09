@@ -2,6 +2,7 @@
 
 from .contracts import (
     BackendError,
+    BackendFeeRecommendations,
     BackendTransaction,
     BackendTransactionSummary,
     TransactionBackend,
@@ -13,6 +14,7 @@ from .mempool import MempoolSpaceBackend, build_mempool_api_base_url
 
 __all__ = [
     "BackendError",
+    "BackendFeeRecommendations",
     "BackendTransaction",
     "BackendTransactionSummary",
     "MempoolSpaceBackend",
