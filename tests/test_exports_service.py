@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from memops.backends import (
     BackendFeeRecommendations,
@@ -8,6 +9,7 @@ from memops.backends import (
 from memops.services import diagnose_why_stuck
 from memops.services.exports import (
     diagnosis_to_export_payload,
+    export_diagnosis_artifacts,
     format_export_payload_json,
     render_diagnosis_markdown,
 )
@@ -148,3 +150,51 @@ def test_render_diagnosis_markdown_includes_expected_sections() -> None:
     assert "### Summary" in report
     assert "The transaction is paying below the faster confirmation bands." in report
     assert "### Explanation" in report
+
+
+def test_export_diagnosis_artifacts_writes_expected_files(
+    tmp_path: Path,
+) -> None:
+    diagnosed = build_diagnosed_transaction()
+
+    artifacts = export_diagnosis_artifacts(diagnosed, str(tmp_path))
+
+    assert artifacts.txid == VALID_TXID
+    assert artifacts.artifact_dir == tmp_path / VALID_TXID
+    assert artifacts.analysis_json_path == tmp_path / VALID_TXID / "analysis.json"
+    assert artifacts.report_markdown_path == tmp_path / VALID_TXID / "report.md"
+    assert artifacts.artifact_dir.is_dir()
+    assert artifacts.analysis_json_path.is_file()
+    assert artifacts.report_markdown_path.is_file()
+
+    payload = json.loads(artifacts.analysis_json_path.read_text(encoding="utf-8"))
+    report = artifacts.report_markdown_path.read_text(encoding="utf-8")
+
+    assert payload["txid"] == VALID_TXID
+    assert payload["diagnosis"]["recommended_action"] == "wait"
+    assert "# MemOps Why-Stuck Diagnosis" in report
+    assert f"- txid: {VALID_TXID}" in report
+
+
+def test_export_diagnosis_artifacts_overwrites_existing_files(
+    tmp_path: Path,
+) -> None:
+    diagnosed = build_diagnosed_transaction()
+
+    artifact_dir = tmp_path / VALID_TXID
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_json_path = artifact_dir / "analysis.json"
+    report_markdown_path = artifact_dir / "report.md"
+
+    analysis_json_path.write_text('{"stale": true}\n', encoding="utf-8")
+    report_markdown_path.write_text("stale report\n", encoding="utf-8")
+
+    artifacts = export_diagnosis_artifacts(diagnosed, tmp_path)
+
+    assert artifacts.analysis_json_path.read_text(
+        encoding="utf-8"
+    ).strip() == format_export_payload_json(diagnosed)
+    assert artifacts.report_markdown_path.read_text(encoding="utf-8") == render_diagnosis_markdown(
+        diagnosed
+    )
