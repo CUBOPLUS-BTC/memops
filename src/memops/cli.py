@@ -28,6 +28,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Render the result as JSON.",
     )
     parser.add_argument(
+        "--export",
+        action="store_true",
+        help="Write why-stuck diagnosis artifacts to disk.",
+    )
+    parser.add_argument(
+        "--export-dir",
+        help="Override the export artifact directory (requires --why-stuck).",
+    )
+    parser.add_argument(
         "--why-stuck",
         dest="why_stuck",
         action="store_true",
@@ -35,6 +44,16 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("txid", help="Transaction id to inspect.")
     return parser
+
+
+def validate_cli_args(args: argparse.Namespace) -> None:
+    """Validate CLI argument combinations before running application logic."""
+    if args.export and not args.why_stuck:
+        msg = "--export requires --why-stuck."
+        raise ValueError(msg)
+    if args.export_dir and not args.why_stuck:
+        msg = "--export-dir requires --why-stuck."
+        raise ValueError(msg)
 
 
 def _format_optional_int(value: int | None) -> str:
@@ -173,7 +192,7 @@ def format_why_stuck_report(diagnosed: DiagnosedTransaction) -> str:
             f"virtual_size_vbytes: {summary.virtual_size_vbytes}",
             f"fee_rate_sat_vb: {fee_context.fee_rate_sat_vb:.2f}",
             f"market_position: {fee_context.market_position.value}",
-            (f"target_fee_rate_sat_vb: {_format_optional_int(fee_context.target_fee_rate_sat_vb)}"),
+            f"target_fee_rate_sat_vb: {_format_optional_int(fee_context.target_fee_rate_sat_vb)}",
             (
                 "fee_rate_shortfall_sat_vb: "
                 f"{_format_optional_float(fee_context.fee_rate_shortfall_sat_vb)}"
@@ -201,6 +220,12 @@ def main(
 
     resolved_stdout = sys.stdout if stdout is None else stdout
     resolved_stderr = sys.stderr if stderr is None else stderr
+
+    try:
+        validate_cli_args(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=resolved_stderr)
+        return 2
 
     try:
         resolved_backend = backend if backend is not None else MempoolSpaceBackend.from_settings()
