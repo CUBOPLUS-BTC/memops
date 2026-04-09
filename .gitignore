@@ -41,4 +41,8 @@ Thumbs.db
 # Logs
 *.log
 
-# Note: uv.lock NO se ignora a propósito; conviene versionarlo.
+# Demo outputs
+demo/output/*
+!demo/output/.gitkeep
+
+# Note: uv.lock is intentionally not ignored; committing it improves reproducibility.
