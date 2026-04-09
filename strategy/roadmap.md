@@ -4,109 +4,110 @@
   
 MemOps is being built as a focused MVP within the constraints of a short development window and a single maintainer.  
   
-For that reason, the roadmap is intentionally narrow. It prioritizes:  
+That means the roadmap must stay disciplined. The project should prioritize:  
   
 - real technical execution,  
 - visible progress,  
-- clear documentation,  
-- and a demo that proves the project is more than a wrapper around an API.  
+- honest documentation,  
+- and a demo that proves the repository already works.  
   
-The rule behind this roadmap is simple:  
+The rule behind this roadmap remains simple:  
   
 > **A smaller and correct MVP is more valuable than a broader but unfinished one.**  
   
-This document organizes the project into three levels of priority:  
-  
-- **P0 — Core MVP:** required for a credible CUBO+ submission  
-- **P1 — Strong differentiators:** only if P0 is stable  
-- **P2 — Post-hackathon extensions:** useful later, not required now  
+At this point, MemOps has already delivered an executable inspection baseline. The next milestone is to move from **inspection** to **diagnosis**.  
   
 ---  
   
 ## 1. Current Development Context  
   
-MemOps is currently in its early build stage.  
+MemOps is no longer only a repository structure or architecture plan.  
   
-At this point, the repository already defines:  
+The project now includes:  
   
-- the project identity,  
-- the open-source positioning,  
-- the strategy documentation,  
-- and the target architecture.  
+- configuration loading from environment variables and `.env`,  
+- a mempool-compatible backend adapter,  
+- local raw transaction parsing,  
+- explicit opt-in RBF detection,  
+- a working CLI,  
+- JSON output,  
+- automated tests,  
+- and a console-script entrypoint.  
   
-The next priority is technical execution.  
-  
-Because the project is being built by one developer, the roadmap must stay realistic. It should emphasize depth over breadth.  
+This matters because the roadmap should reflect the real state of the repository, not an outdated future-state description.  
   
 ---  
   
-## 2. P0 — Core MVP  
+## 2. Phase 1 Delivered Baseline  
   
-These items define whether MemOps exists as a serious project.  
+Phase 1 established the technical base needed for a credible executable MVP.  
   
-## 2.1 Repository foundation  
-  
-The repository should look complete, understandable, and auditable.  
-  
-Minimum requirements:  
+### 2.1 Repository foundation  
+Delivered:  
   
 - root `README.md`  
 - `src/README.md`  
 - `LICENSE`  
 - strategy documents  
 - technical docs in `docs/`  
-- basic project configuration  
-- visible daily progress in GitHub  
+- project configuration  
+- visible Git history  
+- automated tests  
   
-### Success condition  
-A third party should be able to understand what MemOps is and how the repository is organized.  
+### 2.2 Configurable backend support  
+Delivered:  
+  
+- configurable backend URL  
+- configurable network selection  
+- support for mempool-compatible endpoint structure  
+- settings loading from environment variables and `.env`  
+  
+### 2.3 Local transaction inspection  
+Delivered:  
+  
+- raw transaction retrieval by `txid`  
+- local parsing of transaction structure  
+- sequence extraction  
+- segwit detection  
+- explicit opt-in RBF signaling analysis  
+  
+### 2.4 Executable CLI baseline  
+Delivered:  
+  
+- human-readable CLI output  
+- JSON CLI output  
+- `python -m memops`  
+- `memops` console script  
+  
+### 2.5 Phase 1 result  
+The project now has a real inspection pipeline:  
+  
+1. accept `txid`,  
+2. fetch raw hex,  
+3. parse locally,  
+4. analyze locally,  
+5. render reviewable output.  
+  
+That is the current baseline on which the next milestone depends.  
   
 ---  
   
-## 2.2 Configurable mempool-compatible backend support  
+## 3. P0 — Next Core Milestone  
   
-MemOps must be able to work with:  
+The next priority is to move from **transaction inspection** to **stuck-transaction diagnosis**.  
   
-- the public mempool.space endpoint as a default example,  
-- and self-hosted mempool-compatible backends through configuration.  
-  
-### Success condition  
-The tool should not be locked to a single public website.  
-  
----  
-  
-## 2.3 `analyze-tx`  
-  
-This is the first mandatory technical command.  
+## 3.1 `why-stuck`  
+This is now the most important next command.  
   
 It should:  
   
-- accept a `txid`,  
-- query a mempool-compatible backend,  
-- retrieve the `raw hex`,  
-- inspect the transaction locally,  
-- recompute key metrics where applicable,  
-- detect replaceability signals such as opt-in RBF,  
-- and produce structured output.  
-  
-### Success condition  
-MemOps can analyze a real transaction in a way that is visibly more rigorous than simply repeating explorer output.  
-  
----  
-  
-## 2.4 `why-stuck`  
-  
-This is the most important product-level command in the MVP.  
-  
-It should:  
-  
-- compare the transaction’s fee position against current fee pressure,  
+- compare the transaction against current fee conditions,  
 - explain why the transaction is likely not confirming,  
-- identify whether RBF appears possible,  
 - indicate whether waiting is reasonable,  
-- and output a recommended action.  
+- identify whether RBF appears possible,  
+- and produce a clear recommendation.  
   
-Possible outputs include:  
+Possible outputs may include:  
   
 - `wait`  
 - `rbf`  
@@ -114,121 +115,108 @@ Possible outputs include:
 - `cannot-rescue`  
   
 ### Success condition  
-The tool can answer the main human question of the project:  
+MemOps can answer the main user question:  
   
 > **Why is this transaction stuck, and what should be done next?**  
   
 ---  
   
-## 2.5 Basic export artifacts  
+## 3.2 Fee-context retrieval  
   
-The CLI should generate outputs that can be reviewed outside the terminal.  
+To support `why-stuck`, MemOps should retrieve and normalize fee-market context such as:  
   
-Minimum exports:  
+- recommended fee bands,  
+- mempool pressure indicators,  
+- and other backend data needed for comparison.  
+  
+### Success condition  
+The CLI can explain transaction position relative to current conditions, not only transaction structure.  
+  
+---  
+  
+## 3.3 Auditable export artifacts  
+  
+The project should generate outputs that can be reviewed outside the terminal.  
+  
+Minimum desired exports:  
   
 - `analysis.json`  
 - `report.md`  
   
-If `plan-rbf` is ready, then also:  
-  
-- `plan.json`  
-  
 ### Success condition  
-The project leaves auditable evidence, not just terminal output.  
+The tool leaves behind artifacts that are useful for review, demos, and later incident documentation.  
   
 ---  
   
-## 2.6 Demo readiness  
+## 3.4 Demo readiness  
   
-The project should include at least one reproducible case for Demo Day.  
+The project should include at least one reproducible case that shows:  
   
-That may include:  
-  
-- one real or historical mainnet transaction for analysis,  
-- and one documented rescue scenario or prepared example for planning logic.  
+- current inspection output,  
+- JSON output,  
+- and, once implemented, `why-stuck` reasoning.  
   
 ### Success condition  
 The demo is repeatable and not dependent on improvisation.  
   
 ---  
   
-## 3. P0.5 — Strongly Desired if Time Allows  
+## 4. P0.5 — Strongly Desired After Diagnosis  
   
-These are very valuable, but they should not break P0 stability.  
+## 4.1 `plan-rbf`  
+After `why-stuck`, the most important extension is structured RBF planning.  
   
-## 3.1 `plan-rbf`  
-  
-This is the most important extension after `analyze-tx` and `why-stuck`.  
-  
-It should:  
+It should eventually:  
   
 - confirm whether replacement is plausible,  
-- estimate the target fee needed,  
+- estimate target fee conditions,  
 - calculate fee delta,  
-- produce an auditable plan,  
-- and, if implemented in time, generate a PSBT artifact.  
+- and produce an auditable plan.  
   
-### Success condition  
-MemOps does not stop at diagnosis; it also prepares a structured next step.  
+### Rule  
+Do not pursue this if it weakens `why-stuck` quality.  
   
 ---  
   
-## 4. P1 — Strong Differentiators  
+## 5. P1 — Strong Differentiators  
   
-Only attempt these if P0 is working and documented.  
+Only attempt these after the diagnosis milestone is stable.  
   
-## 4.1 `plan-cpfp`  
+### 5.1 `plan-cpfp`  
+Potentially useful, but more complex.  
   
-Potentially useful, but more complex for a solo-maintainer timeline.  
+It may require:  
   
-It may include:  
-  
-- ownership checks,  
-- package logic,  
+- ownership assumptions,  
+- package reasoning,  
 - and child fee estimation.  
   
-### Rule  
-Do not pursue this if it endangers `why-stuck` or `plan-rbf`.  
+### 5.2 `watch-tx` or `watch-mempool`  
+A monitoring mode could later improve operational usefulness.  
   
-## 4.2 `watch-tx` or `watch-mempool`  
-  
-A live or near-live monitoring mode could strengthen the operational feel of the project.  
-  
-Possible implementation styles:  
-  
-- polling first,  
-- WebSocket later if verified safely.  
-  
-### Rule  
-Only add if the core analysis flow is already solid.  
-  
-## 4.3 `triage-batch`  
-  
-A batch mode for multiple transactions could make MemOps feel more operationally mature.  
-  
-But this is clearly secondary to the core user story.  
+### 5.3 `triage-batch`  
+Batch handling for multiple transactions may become useful later, but it is clearly secondary to the core single-transaction flow.  
   
 ---  
   
-## 5. P2 — Post-Hackathon Extensions  
-  
-These items are valuable for long-term growth, but they are not necessary for the current evaluation stage.  
+## 6. P2 — Post-Evaluation Extensions  
   
 Possible future work:  
   
 - SQLite persistence  
 - deeper Bitcoin Core validation  
+- broader transaction-type support  
 - more advanced package analysis  
-- broader transaction script support  
-- stronger release and contribution workflows  
+- richer report generation  
+- stronger release workflows  
   
-These should be considered only after the MVP is credible.  
+These should only be pursued after the current MVP becomes a strong diagnostic tool.  
   
 ---  
   
-## 6. What Gets Cut First If Time Becomes Tight  
+## 7. What Gets Cut First If Time Becomes Tight  
   
-To protect the quality of the project, these items should be cut before the core is weakened:  
+To protect quality, these items should be cut before the core is weakened:  
   
 - CPFP planning  
 - live monitoring  
@@ -239,58 +227,55 @@ To protect the quality of the project, these items should be cut before the core
   
 The following should **not** be cut:  
   
-- configurable backend support  
+- backend configurability  
 - local transaction inspection  
-- `analyze-tx`  
+- honest documentation  
+- automated tests  
 - `why-stuck`  
-- export artifacts  
-- technical documentation  
-- honest worklog and visible progress  
+- auditable exports  
+- demo readiness  
   
 ---  
   
-## 7. Definition of Done for the CUBO+ Evaluation Stage  
+## 8. Definition of Done for the Next Milestone  
   
-MemOps should be considered ready for the evaluation stage if it can demonstrate the following:  
+MemOps should be considered ready for the next evaluation milestone if it can demonstrate the following:  
   
 ### Technical  
-- analyze a real transaction from a `txid`  
-- retrieve and inspect `raw hex`  
-- compute or validate key transaction metrics locally  
-- detect opt-in replacement signals  
+- inspect a real transaction from a `txid`  
+- retrieve and inspect raw hex  
+- compute and present key transaction metadata locally  
+- detect explicit opt-in RBF signaling  
 - explain why a transaction is likely stuck  
 - produce a clear recommendation  
-- export machine-readable and human-readable outputs  
+- export machine-readable and human-readable artifacts  
   
 ### Documentation  
 - clear root README  
-- technical README in or near `src/`  
-- strategy documentation in English  
-- basic architecture and assumptions docs  
+- technical README in `src/`  
+- roadmap aligned with the actual repository state  
 - reproducible demo script  
   
 ### Open-source readiness  
 - public license  
 - no-affiliation disclaimer  
 - repository structure that a third party can understand  
-- visible evolution in GitHub  
+- visible evolution in Git history  
   
 ### Demo readiness  
 - a prepared scenario  
 - a clear narrative  
-- a technical walkthrough that matches the narrative  
-- outputs that can be shown and explained  
+- commands that match the implementation  
+- outputs that can be shown and explained honestly  
   
 ---  
   
 ## Conclusion  
   
-The roadmap for MemOps is intentionally strict because that is the professional choice for a single-maintainer MVP.  
+The roadmap for MemOps remains intentionally strict because that is the professional choice for a single-maintainer MVP.  
   
-The goal is not to win by listing more features.  
+Phase 1 proved that the repository is executable.  
   
-The goal is to demonstrate one thing clearly:  
+The next step is to prove that MemOps can move beyond inspection and deliver clear operational diagnosis.  
   
-**MemOps can turn mempool visibility into verifiable operational reasoning.**  
-  
-If that is achieved with a clean repository, real code, and a disciplined demo, the project will already be strong.
+That is the path that best supports both the CUBO+ evaluation context and the long-term open-source value of the project.

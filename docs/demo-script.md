@@ -2,13 +2,13 @@
   
 ## Purpose  
   
-This document defines the intended Demo Day flow for MemOps.  
+This document defines the recommended demo flow for the current executable MVP of MemOps.  
   
-The goal of the demo is not to show many features. The goal is to make one idea clear:  
+The goal of the demo is not to show many features. The goal is to prove one thing clearly:  
   
-> **MemOps is not another explorer. It is a verification-first operational tool for stuck Bitcoin transactions.**  
+> **MemOps is already an executable, verification-first transaction inspection tool — not just a repository plan.**  
   
-The demo should therefore stay disciplined, clear, and short.  
+The current demo should therefore stay disciplined and aligned with what the code actually does today.  
   
 ---  
   
@@ -16,18 +16,25 @@ The demo should therefore stay disciplined, clear, and short.
   
 By the end of the demo, the audience should understand:  
   
-- what problem MemOps addresses,  
-- why explorer visibility is not enough,  
-- how MemOps uses a mempool-compatible backend without becoming a trivial wrapper,  
-- and why the project fits the “Don’t trust, verify” philosophy.  
+- what problem MemOps is addressing,  
+- why backend data should not be treated as the entire analysis layer,  
+- what the current CLI can already inspect locally,  
+- and why this is a credible base for later `why-stuck` and response workflows.  
   
 ---  
   
-## Demo Structure  
+## What the Current MVP Demonstrates  
   
-The full demonstration should support a 5-minute non-technical pitch followed by a short technical walkthrough.  
+Today, MemOps can already:  
   
-The technical part should be built around the smallest number of commands needed to prove the value of the project.  
+- accept a `txid`,  
+- query a mempool-compatible backend,  
+- retrieve raw transaction hex,  
+- parse key transaction fields locally,  
+- detect explicit opt-in RBF signaling,  
+- and render the result in both human-readable and JSON form.  
+  
+That is enough to support a real technical walkthrough.  
   
 ---  
   
@@ -36,14 +43,21 @@ The technical part should be built around the smallest number of commands needed
 Before the presentation, confirm the following:  
   
 - the repository is up to date,  
+- dependencies are installed,  
 - the selected demo transaction is documented,  
-- the backend endpoint being used is working,  
-- the terminal output is readable,  
-- export paths are known,  
-- fallback screenshots or sample outputs are available,  
-- and internet dependency has been reduced as much as possible.  
+- the backend endpoint is reachable,  
+- a local `.env` file is prepared if needed,  
+- terminal output is readable,  
+- and fallback screenshots or saved outputs exist.  
   
-If a live backend is used, also prepare a fallback explanation in case the service is slow or unavailable.  
+Useful pre-demo checks:  
+  
+```bash  
+uv run memops --help  
+uv run pytest -q  
+```  
+  
+If a live backend will be used, also prepare a fallback explanation in case the service is slow or unavailable.  
   
 ---  
   
@@ -53,100 +67,107 @@ If a live backend is used, also prepare a fallback explanation in case the servi
   
 Suggested message:  
   
-> “MemOps is a verification-first Bitcoin incident response CLI. Public explorers show what is happening, but operators also need help deciding what to do next when a transaction is stuck.”  
+> “MemOps is a verification-first Bitcoin CLI. The current MVP focuses on transaction inspection: fetch the raw transaction, inspect it locally, and report what matters for later operational reasoning.”  
   
-This establishes the product category clearly.  
-  
----  
-  
-## 2. Present the scenario  
-  
-Explain the chosen case in plain terms:  
-  
-- a transaction is unconfirmed,  
-- fee pressure is high or relevant,  
-- and the operator needs a more structured answer than what an explorer alone provides.  
-  
-Keep this short. Do not spend too much time on Bitcoin theory before showing the tool.  
+This sets honest expectations.  
   
 ---  
   
-## 3. Run `analyze-tx`  
+## 2. Show the configuration model  
   
-Goal of this step:  
+If useful, briefly show that MemOps is backend-configurable and can read from `.env`:  
   
-- show that MemOps starts from a `txid`,  
-- reaches a mempool-compatible backend,  
-- retrieves transaction data,  
-- and performs structured analysis rather than only showing raw API output.  
+```bash  
+cp .env.example .env  
+```  
   
-What to highlight while presenting:  
+Example configuration:  
   
-- transaction identification,  
-- local inspection or recomputation,  
-- replaceability signals,  
-- and structured output.  
+```dotenv  
+MEMOPS_BACKEND_URL=https://mempool.space  
+MEMOPS_NETWORK=mainnet  
+```  
   
 Suggested speaking line:  
   
-> “The point here is not only to fetch transaction data. It is to inspect it in a way that supports later reasoning.”  
+> “The project is designed to work with mempool-compatible backends, not only one public website.”  
+  
+Keep this short.  
   
 ---  
   
-## 4. Run `why-stuck`  
+## 3. Run the human-readable inspection command  
   
-This is the key moment of the demo.  
+Use the real command that exists today:  
   
-Goal of this step:  
-  
-- explain why the transaction is likely stuck,  
-- compare it against current fee pressure,  
-- and produce a recommendation.  
+```bash  
+uv run memops <txid>  
+```  
   
 What to highlight:  
   
-- fee position versus current context,  
-- whether waiting is reasonable,  
-- whether replacement looks possible,  
-- and the clarity of the recommendation.  
+- transaction identifier,  
+- version,  
+- input and output counts,  
+- locktime,  
+- segwit detection,  
+- explicit RBF result,  
+- and which inputs signal replacement.  
   
 Suggested speaking line:  
   
-> “This is the core of the project: not just seeing that the transaction is unconfirmed, but receiving a structured explanation of why and what to consider next.”  
+> “The point is not only to fetch a transaction. It is to inspect important properties locally and present them clearly.”  
   
 ---  
   
-## 5. Show exports  
+## 4. Explain what is local versus external  
   
-If available, show:  
+Make the trust model explicit:  
   
-- `analysis.json`  
-- `report.md`  
-- and later `plan.json` or other artifacts  
-  
-This step is important because it proves that the tool is not only interactive but also auditable.  
+- the backend provides the raw transaction hex,  
+- MemOps parses the transaction locally,  
+- and explicit RBF signaling is derived locally from sequence values.  
   
 Suggested speaking line:  
   
-> “MemOps leaves behind artifacts that can be reviewed later instead of relying only on terminal output or screenshots.”  
+> “The backend is a data source. The interpretation shown here is intentionally kept on the client side.”  
+  
+This reinforces the project philosophy.  
   
 ---  
   
-## 6. Optional: show `plan-rbf`  
+## 5. Run the JSON mode  
   
-Only do this if the feature is stable enough.  
+Show that the same inspection can be exported in a machine-friendly form:  
   
-If shown, keep the focus on:  
+```bash  
+uv run memops --json <txid>  
+```  
   
-- structured next-step planning,  
-- safety,  
-- and auditability.  
+What to highlight:  
   
-Do not spend too much time on low-level details if the feature is still early.  
+- `raw_hex`  
+- `parsed`  
+- `analysis`  
   
 Suggested speaking line:  
   
-> “The purpose is not to automate irreversible action by default. It is to prepare an auditable next step.”  
+> “JSON output matters because incident-response workflows benefit from artifacts that can be reused, inspected, or scripted.”  
+  
+---  
+  
+## 6. Connect the current MVP to the roadmap  
+  
+Close the technical walkthrough by explaining what this baseline enables next:  
+  
+- fee-pressure comparison,  
+- `why-stuck` reasoning,  
+- auditable report generation,  
+- and structured RBF planning.  
+  
+Suggested speaking line:  
+  
+> “This MVP already proves the inspection pipeline. The next milestone is to move from inspection to diagnosis.”  
   
 ---  
   
@@ -156,7 +177,7 @@ Suggested speaking line:
 ~1.5 to 2 minutes  
   
 ### Technical walkthrough  
-~2.5 to 3.5 minutes  
+~2 to 3 minutes  
   
 This keeps the full demo compact and credible.  
   
@@ -166,12 +187,12 @@ This keeps the full demo compact and credible.
   
 If the live backend fails or the environment becomes unstable, use one or more of the following:  
   
-- a saved export from a previous successful run,  
-- screenshots of expected command outputs,  
-- a documented historical case,  
-- or a dry walkthrough of the analysis logic using prepared artifacts.  
+- a saved terminal capture of `uv run memops <txid>`,  
+- a saved JSON output from `uv run memops --json <txid>`,  
+- screenshots of expected behavior,  
+- or a dry explanation of the inspection pipeline using prepared artifacts.  
   
-The fallback plan should still communicate the value proposition clearly.  
+The fallback should still prove that the project is executable and technically coherent.  
   
 ---  
   
@@ -179,12 +200,13 @@ The fallback plan should still communicate the value proposition clearly.
   
 Avoid these mistakes:  
   
-- trying to show too many commands,  
-- explaining too many future features,  
-- spending too much time on infrastructure,  
-- or turning the demo into a generic explorer tour.  
+- do not demo commands that do not exist yet,  
+- do not present `why-stuck` as if it were already implemented,  
+- do not turn the walkthrough into a generic explorer tour,  
+- do not spend too much time on infrastructure details,  
+- and do not oversell the current MVP.  
   
-The strength of MemOps is precision, not feature count.  
+The strength of the current demo is honesty plus execution.  
   
 ---  
   
@@ -192,16 +214,17 @@ The strength of MemOps is precision, not feature count.
   
 Recommended ending:  
   
-> “MemOps does not try to become another explorer. It adds a verification-first reasoning layer between mempool visibility and operational action.”  
+> “MemOps already shows that transaction inspection can be more rigorous than reading an explorer page. The next step is to turn that inspection baseline into clearer operational diagnosis.”  
   
 ---  
   
 ## Final Note  
   
-The best MemOps demo is not the longest one.  
+The best current MemOps demo is not the one with the most promises.  
   
 It is the one that clearly proves:  
   
-- there is a real operational problem,  
-- the tool addresses it in a disciplined way,  
-- and the project is small on purpose, not small by accident.
+- the repository is executable,  
+- the CLI performs real local inspection,  
+- the outputs are reviewable,  
+- and the project has a disciplined path forward.

@@ -1,10 +1,10 @@
 # MemOps  
   
-**Verification-first Bitcoin incident response CLI for mempool-compatible backends**  
+**Verification-first Bitcoin transaction inspection CLI for mempool-compatible backends**  
   
-MemOps is an open-source Python CLI designed to help operators analyze stuck Bitcoin transactions, reason about fee pressure, and prepare auditable next steps.  
+MemOps is an open-source Python CLI being built toward verification-first Bitcoin incident response workflows.  
   
-The project is being built as a focused MVP for the **CUBO+ evaluation stage** and is intended to continue as an open-source project afterward.  
+The current executable MVP focuses on one narrow job: fetch a transaction by `txid`, inspect its raw hex locally, and report explicit opt-in RBF signaling in a reviewable way.  
   
 ---  
   
@@ -14,12 +14,12 @@ Bitcoin explorers are useful for visibility, but visibility is not the same as o
   
 When a transaction is stuck, operators need more than a status page. They need a workflow that helps them:  
   
-- inspect the transaction more directly,  
+- inspect the transaction directly,  
 - verify critical details locally when possible,  
-- understand why it is likely not confirming,  
-- and document the reasoning behind the next action.  
+- understand whether the transaction explicitly signals opt-in RBF,  
+- and produce outputs that are easy to review or script against.  
   
-MemOps is built for that purpose.  
+MemOps is being built for that purpose.  
   
 ---  
   
@@ -33,21 +33,101 @@ MemOps is built for that purpose.
   
 ---  
   
-## Target MVP Scope  
+## Current MVP Capabilities  
   
-The target MVP of MemOps focuses on:  
+The current executable baseline can:  
   
-- transaction analysis from a `txid`  
-- retrieval of transaction data from a mempool-compatible backend  
-- local parsing and validation of key transaction properties  
-- explanation of why a transaction is likely stuck  
-- auditable exports such as JSON and Markdown reports  
+- accept a Bitcoin `txid`,  
+- fetch raw transaction hex from a mempool-compatible backend,  
+- parse basic transaction structure locally,  
+- report version, input count, output count, locktime, sequence values, and segwit detection,  
+- detect explicit opt-in RBF signaling from input sequence values,  
+- render a human-readable report,  
+- render a machine-readable JSON payload,  
+- and load runtime settings from environment variables or a local `.env` file.  
   
-Planned core commands include:  
+---  
   
-- `analyze-tx`  
-- `why-stuck`  
-- `plan-rbf`  
+## Current CLI Usage  
+  
+After syncing the project with `uv`, you can inspect a transaction with:  
+  
+```bash  
+uv run memops <txid>  
+```  
+  
+JSON output is also available:  
+  
+```bash  
+uv run memops --json <txid>  
+```  
+  
+The module entrypoint works too:  
+  
+```bash  
+uv run python -m memops <txid>  
+```  
+  
+Help output:  
+  
+```bash  
+uv run memops --help  
+```  
+  
+Typical human-readable output looks like:  
+  
+```text  
+txid: <txid>  
+version: 2  
+inputs: 1  
+outputs: 2  
+locktime: 0  
+segwit: yes  
+explicit_rbf: yes  
+signaling_inputs: 0  
+```  
+  
+The JSON mode includes:  
+  
+- `txid`  
+- `raw_hex`  
+- `parsed`  
+- `analysis`  
+  
+This makes the current CLI useful both for direct inspection and for shell scripting.  
+  
+---  
+  
+## Configuration  
+  
+MemOps reads settings from environment variables and from a local `.env` file by default.  
+  
+You can start from the example file:  
+  
+```bash  
+cp .env.example .env  
+```  
+  
+Example:  
+  
+```dotenv  
+MEMOPS_BACKEND_URL=https://mempool.space  
+MEMOPS_NETWORK=mainnet  
+MEMOPS_EXPORT_DIR=./demo/output  
+```  
+  
+Current settings:  
+  
+- `MEMOPS_BACKEND_URL`    
+  Base URL for a mempool-compatible backend.  
+  
+- `MEMOPS_NETWORK`    
+  Supported values: `mainnet`, `testnet`, `signet`, `regtest`.  
+  
+- `MEMOPS_EXPORT_DIR`    
+  Reserved for upcoming export workflows.  
+  
+The default backend example is `https://mempool.space`, but the project is intended to remain backend-configurable.  
   
 ---  
   
@@ -55,38 +135,14 @@ Planned core commands include:
   
 MemOps is **not**:  
   
-- a wallet  
-- a block explorer  
-- a custodial product  
-- a retail app  
-- a cloud-only service  
-- an officially affiliated mempool.space product  
+- a wallet,  
+- a broadcaster,  
+- a block explorer replacement,  
+- a custodial product,  
+- a cloud-only service,  
+- or an officially affiliated mempool.space product.  
   
----  
-  
-## Backend Compatibility  
-  
-MemOps is designed to work with:  
-  
-- the public `mempool.space` endpoint as a default example  
-- self-hosted **mempool-compatible** backends via configuration  
-  
-This matters because the project is intended to support stronger operational sovereignty rather than dependence on one public interface.  
-  
----  
-  
-## Project Status  
-  
-MemOps is currently in an **early MVP stage**.  
-  
-At this point, the repository is focused on:  
-  
-- project structure  
-- technical and strategy documentation  
-- backend integration planning  
-- core CLI implementation  
-  
-The project is currently maintained by a **single developer**, so scope is intentionally controlled.  
+The goal is to add a verification-first reasoning layer, not to hide irreversible actions behind a simple interface.  
   
 ---  
   
@@ -101,11 +157,18 @@ The project is currently maintained by a **single developer**, so scope is inten
 ├── src/  
 │   ├── README.md  
 │   └── memops/  
-├── strategy/  
 ├── docs/  
+├── strategy/  
 ├── demo/  
 └── tests/  
 ```  
+  
+Key implementation areas:  
+  
+- `src/memops/backends/` — backend contracts and mempool-compatible retrieval  
+- `src/memops/services/` — parsing, analysis, and inspection workflow  
+- `src/memops/cli.py` — command-line entrypoint  
+- `tests/` — automated validation of policy, parsing, backend behavior, configuration, and CLI output  
   
 ---  
   
@@ -123,9 +186,44 @@ uv sync --python 3.12 --group dev
 Basic checks:  
   
 ```bash  
-make lint  
-make test  
+uv run ruff format .  
+uv run ruff check .  
+uv run pytest -q  
 ```  
+  
+CLI smoke test:  
+  
+```bash  
+uv run memops --help  
+```  
+  
+---  
+  
+## Project Status  
+  
+MemOps now has an executable MVP baseline.  
+  
+### Delivered baseline  
+  
+- settings model with `.env` support  
+- mempool-compatible backend adapter  
+- local raw transaction parsing  
+- explicit RBF detection  
+- end-to-end inspection workflow  
+- human-readable CLI output  
+- JSON CLI output  
+- `memops` console script  
+  
+### Next planned capabilities  
+  
+The next milestone is to move from **inspection** to **diagnosis**, including work such as:  
+  
+- fee-pressure context,  
+- `why-stuck` reasoning,  
+- auditable export artifacts,  
+- and structured RBF planning.  
+  
+The project is still intentionally scoped as a focused single-maintainer MVP.  
   
 ---  
   
@@ -133,12 +231,12 @@ make test
   
 MemOps was initially developed in the context of the CUBO+ evaluation path, where projects are assessed on:  
   
-- technical execution  
-- visible development progress  
-- documentation quality  
-- and real-world relevance for the Bitcoin ecosystem in El Salvador  
+- technical execution,  
+- visible development progress,  
+- documentation quality,  
+- and real-world relevance for the Bitcoin ecosystem in El Salvador.  
   
-The long-term goal is to leave the project in a state that is useful beyond the evaluation itself.  
+The long-term goal is to leave the project in a state that remains useful beyond the evaluation itself.  
   
 ---  
   
@@ -154,14 +252,15 @@ It is **not officially affiliated with mempool.space**. Any compatibility with m
   
 Key project documents include:  
   
+- `docs/architecture.md`  
+- `docs/assumptions.md`  
+- `docs/demo-script.md`  
 - `strategy/problem.md`  
 - `strategy/impact-analysis.md`  
 - `strategy/operating-model.md`  
 - `strategy/business-model.md`  
 - `strategy/roadmap.md`  
 - `strategy/pitch-script.md`  
-  
-Technical documentation should live in the `docs/` directory.  
   
 ---  
   
