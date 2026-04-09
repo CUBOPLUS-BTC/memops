@@ -66,3 +66,23 @@ def test_get_settings_returns_cached_instance(
 
     assert first is second
     assert first.backend_url == "https://example.com"
+
+
+def test_settings_can_load_values_from_dotenv_file(tmp_path: Path) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                "MEMOPS_BACKEND_URL=https://example.com/",
+                "MEMOPS_NETWORK=testnet",
+                "MEMOPS_EXPORT_DIR=/tmp/memops-dotenv",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=dotenv_path)
+
+    assert settings.backend_url == "https://example.com"
+    assert settings.network == "testnet"
+    assert settings.export_dir == Path("/tmp/memops-dotenv")
