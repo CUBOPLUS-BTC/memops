@@ -1,9 +1,21 @@
-"""Rendering helpers for why-stuck diagnosis export artifacts."""
+"""Rendering helpers and artifact export workflow for why-stuck diagnosis."""
 
 import json
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from memops.services.diagnosis import DiagnosedTransaction
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosisArtifactPaths:
+    """Paths written for an exported why-stuck diagnosis."""
+
+    txid: str
+    artifact_dir: Path
+    analysis_json_path: Path
+    report_markdown_path: Path
 
 
 def _format_optional_int(value: int | None) -> str:
@@ -159,3 +171,32 @@ def render_diagnosis_markdown(diagnosed: DiagnosedTransaction) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def export_diagnosis_artifacts(
+    diagnosed: DiagnosedTransaction,
+    base_dir: Path | str,
+) -> DiagnosisArtifactPaths:
+    """Write why-stuck diagnosis artifacts to disk."""
+    txid = diagnosed.inspection.txid
+    artifact_dir = Path(base_dir) / txid
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_json_path = artifact_dir / "analysis.json"
+    report_markdown_path = artifact_dir / "report.md"
+
+    analysis_json_path.write_text(
+        f"{format_export_payload_json(diagnosed)}\n",
+        encoding="utf-8",
+    )
+    report_markdown_path.write_text(
+        render_diagnosis_markdown(diagnosed),
+        encoding="utf-8",
+    )
+
+    return DiagnosisArtifactPaths(
+        txid=txid,
+        artifact_dir=artifact_dir,
+        analysis_json_path=analysis_json_path,
+        report_markdown_path=report_markdown_path,
+    )
