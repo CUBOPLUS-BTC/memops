@@ -4,7 +4,7 @@
   
 This document records the main assumptions and current limits of the MemOps MVP.  
   
-The goal is to be explicit about what the project is designed to do, what it is not designed to do, and where certain results may still depend on backend data or future implementation work.  
+The goal is to be explicit about what the project is designed to do, what it is not designed to do, and where certain results still depend on backend data rather than independent local verification.  
   
 This is especially important for a verification-first project. Honest assumptions improve credibility.  
   
@@ -12,12 +12,13 @@ This is especially important for a verification-first project. Honest assumption
   
 ## 1. Project Stage  
   
-MemOps is currently an **early MVP**.  
+MemOps is currently an **early executable MVP**.  
   
-That means the repository is being prepared to demonstrate:  
+That means the repository already demonstrates:  
   
-- a clear product concept,  
-- a structured technical direction,  
+- a working inspection CLI,  
+- a working why-stuck diagnosis mode,  
+- a clear technical direction,  
 - and a disciplined open-source foundation.  
   
 It does **not** mean the project already supports every possible Bitcoin transaction workflow.  
@@ -26,11 +27,18 @@ It does **not** mean the project already supports every possible Bitcoin transac
   
 ## 2. Core Scope Assumption  
   
-The MVP is focused on a narrow operational problem:  
+The current scope is intentionally narrow:  
   
-> analyzing a stuck Bitcoin transaction and helping explain what to do next.  
+> inspect a Bitcoin transaction directly and provide an initial why-stuck diagnosis.  
   
-The initial priority is not broad feature coverage. It is correctness and clarity around the core user story.  
+Today that means MemOps can:  
+  
+- inspect raw transaction structure locally,  
+- detect explicit opt-in RBF signaling locally,  
+- compare a transaction against current backend fee recommendations,  
+- and produce a reviewable recommendation such as waiting or considering a fee bump path.  
+  
+It does **not** yet mean full stuck-transaction rescue planning.  
   
 ---  
   
@@ -51,22 +59,20 @@ However, the exact behavior or schema of every deployment should not be assumed 
   
 MemOps is built around the principle of local verification where feasible.  
   
-The MVP assumes that it should attempt to inspect or derive key properties locally from transaction data, especially from `raw hex`, rather than relying only on summarized explorer fields.  
+At the current stage, MemOps reasons locally about:  
   
-That said, not every piece of information is equally self-contained.  
-  
-### Examples of what the project aims to reason about locally  
-- transaction structure,  
-- input and output layout,  
-- size-related metrics,  
+- raw transaction structure,  
+- input and output counts,  
 - sequence values,  
-- replaceability signals.  
+- segwit detection,  
+- and explicit opt-in RBF signaling.  
   
-### Examples of values that may still depend on external context  
-- some fee calculations that require prevout values,  
-- current fee pressure context,  
+However, the current why-stuck mode also depends on normalized backend data for:  
+  
+- transaction fee summary fields,  
+- transaction weight,  
 - confirmation status,  
-- and network conditions.  
+- and current fee recommendation bands.  
   
 The correct stance is not “local verification of everything no matter what.” The correct stance is:  
   
@@ -76,23 +82,28 @@ The correct stance is not “local verification of everything no matter what.”
   
 ## 5. Fee Calculation Assumption  
   
-The MVP assumes that a meaningful transaction analysis should include fee reasoning.  
+The current why-stuck implementation computes fee-rate context from **backend-provided fee and weight data**.  
   
-However, exact fee calculation may require information about the values of spent outputs. If those values are not fully derivable from the raw transaction alone, the project may rely on backend-provided transaction context or optional node-based validation.  
+That means the project can currently derive:  
   
-This should always be documented clearly in the output or implementation notes.  
+- virtual size from backend weight,  
+- fee rate in sat/vB,  
+- fee-band position relative to current recommendations,  
+- and a target recommendation band.  
   
-The project should avoid pretending that a value was independently verified if it still depended on external data.  
+What it does **not** currently do is independently recompute the transaction fee from prevout values. That would require additional prevout data retrieval or optional node-based validation.  
+  
+The project should therefore avoid pretending that current fee-rate context is fully self-verified from raw transaction bytes alone.  
   
 ---  
   
 ## 6. Transaction-Type Assumption  
   
-The MVP is expected to work best for common transaction patterns and well-understood transaction structures.  
+The current parser is intentionally narrow and extracts minimal metadata needed for inspection and replaceability reasoning.  
   
-It does not assume full support from day one for every advanced or unusual script scenario.  
+The MVP is expected to work best for common transaction patterns and well-understood structures. It does not assume full support from day one for every advanced or unusual script scenario.  
   
-The current product direction favors:  
+The product direction still favors:  
   
 - a strong core flow,  
 - clear assumptions,  
@@ -102,14 +113,14 @@ The current product direction favors:
   
 ## 7. Replaceability Assumption  
   
-MemOps assumes that opt-in RBF detection can be approached by inspecting sequence-related signals in the transaction inputs.  
+MemOps assumes that explicit opt-in RBF detection can be approached by inspecting sequence-related signals in the transaction inputs.  
   
-This is useful as a practical operational indicator.  
+This is useful as a practical operational indicator, and the current implementation derives it locally from raw transaction data.  
   
 However, the project should still document the difference between:  
   
+- local explicit-RBF signal detection,  
 - policy-related interpretation,  
-- local signal detection,  
 - and actual network acceptance behavior in a live environment.  
   
 In other words, replacement reasoning should be presented carefully and not as magical certainty.  
@@ -128,7 +139,7 @@ A later CPFP flow would therefore likely depend on one of the following:
 - explicit user input,  
 - or controlled demo data.  
   
-This is one reason CPFP is secondary to the core `analyze-tx` and `why-stuck` flow.  
+This is one reason CPFP remains secondary to the current inspection and why-stuck flow.  
   
 ---  
   
@@ -150,7 +161,7 @@ This is an intentional design choice.
   
 The project should remain runnable without mandatory cloud infrastructure or hidden services.  
   
-Optional integrations may exist later, but the repository should stay understandable and portable without them.  
+Optional integrations may exist later, but the repository should stay understandable and portable without that dependency.  
   
 This matters for both open-source reuse and CUBO+ evaluation.  
   
@@ -178,12 +189,16 @@ The MemOps MVP does **not** claim to:
 - guarantee confirmation,  
 - replace a wallet,  
 - replace a full node,  
+- independently verify every fee-related field,  
+- automatically generate a final RBF transaction,  
+- automatically plan CPFP,  
 - or automate production operations safely.  
   
 Its value is narrower and more realistic:  
   
-- explain a stuck transaction better,  
-- structure reasoning more clearly,  
+- inspect a transaction locally where feasible,  
+- explain likely fee-related confirmation issues,  
+- structure why-stuck reasoning more clearly,  
 - support auditable outputs,  
 - and promote a healthier verification model.  
   
@@ -195,7 +210,8 @@ MemOps becomes more credible when its assumptions are written down clearly.
   
 The project is strongest when it says:  
   
-- what it verifies,  
+- what it verifies locally,  
+- what it normalizes from backend data,  
 - what it infers,  
 - what it still depends on,  
 - and what it intentionally does not do.  

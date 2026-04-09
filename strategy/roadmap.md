@@ -15,7 +15,12 @@ The rule behind this roadmap remains simple:
   
 > **A smaller and correct MVP is more valuable than a broader but unfinished one.**  
   
-At this point, MemOps has already delivered an executable inspection baseline. The next milestone is to move from **inspection** to **diagnosis**.  
+At this point, MemOps has already delivered both:  
+  
+- an executable inspection baseline, and  
+- an initial why-stuck diagnosis baseline.  
+  
+The next milestone after this branch is to make those results more auditable and more operationally useful without losing clarity.  
   
 ---  
   
@@ -29,6 +34,10 @@ The project now includes:
 - a mempool-compatible backend adapter,  
 - local raw transaction parsing,  
 - explicit opt-in RBF detection,  
+- transaction summary retrieval,  
+- fee recommendation retrieval,  
+- fee-context analysis,  
+- an initial why-stuck diagnosis policy,  
 - a working CLI,  
 - JSON output,  
 - automated tests,  
@@ -80,7 +89,7 @@ Delivered:
 - `memops` console script  
   
 ### 2.5 Phase 1 result  
-The project now has a real inspection pipeline:  
+The project established a real inspection pipeline:  
   
 1. accept `txid`,  
 2. fetch raw hex,  
@@ -88,53 +97,65 @@ The project now has a real inspection pipeline:
 4. analyze locally,  
 5. render reviewable output.  
   
-That is the current baseline on which the next milestone depends.  
+That remains the base for everything that follows.  
   
 ---  
   
-## 3. P0 — Next Core Milestone  
+## 3. Phase 2 Delivered Diagnosis Baseline  
   
-The next priority is to move from **transaction inspection** to **stuck-transaction diagnosis**.  
+Phase 2 extends MemOps from inspection into an initial diagnosis workflow.  
   
-## 3.1 `why-stuck`  
-This is now the most important next command.  
+### 3.1 Diagnosis data retrieval  
+Delivered:  
   
-It should:  
+- normalized backend transaction summary retrieval  
+- normalized backend fee recommendation retrieval  
   
-- compare the transaction against current fee conditions,  
-- explain why the transaction is likely not confirming,  
-- indicate whether waiting is reasonable,  
-- identify whether RBF appears possible,  
-- and produce a clear recommendation.  
+### 3.2 Fee-context reasoning  
+Delivered:  
   
-Possible outputs may include:  
+- fee-rate calculation from backend fee and weight data  
+- virtual size derivation from transaction weight  
+- fee-band classification against current recommendations  
+- target fee-band selection  
+- shortfall calculation versus the next band  
   
-- `wait`  
-- `rbf`  
-- `cpfp`  
-- `cannot-rescue`  
+### 3.3 Why-stuck policy  
+Delivered:  
   
-### Success condition  
-MemOps can answer the main user question:  
+- diagnosis categories for confirmed, low-fee, priority-gap, and competitive-fee cases  
+- severity classification  
+- recommended next actions such as:  
+  - `none`  
+  - `wait`  
+  - `bump_fee_rbf`  
+  - `consider_manual_cpfp`  
   
-> **Why is this transaction stuck, and what should be done next?**  
+### 3.4 Executable CLI diagnosis mode  
+Delivered:  
+  
+- `memops --why-stuck <txid>`  
+- `memops --why-stuck --json <txid>`  
+  
+### 3.5 Phase 2 result  
+The project now has a real diagnosis pipeline:  
+  
+1. accept `txid`,  
+2. inspect raw transaction structure locally,  
+3. retrieve backend fee context,  
+4. classify current fee position,  
+5. apply why-stuck policy,  
+6. render a structured explanation and recommendation.  
+  
+This is an **initial diagnosis baseline**, not yet a full rescue workflow.  
   
 ---  
   
-## 3.2 Fee-context retrieval  
+## 4. P0 — Next Core Milestone After `v0.2.0`  
   
-To support `why-stuck`, MemOps should retrieve and normalize fee-market context such as:  
+The next priority is to make the current diagnosis baseline more auditable and more actionable without over-expanding the product.  
   
-- recommended fee bands,  
-- mempool pressure indicators,  
-- and other backend data needed for comparison.  
-  
-### Success condition  
-The CLI can explain transaction position relative to current conditions, not only transaction structure.  
-  
----  
-  
-## 3.3 Auditable export artifacts  
+## 4.1 Auditable export artifacts  
   
 The project should generate outputs that can be reviewed outside the terminal.  
   
@@ -148,23 +169,37 @@ The tool leaves behind artifacts that are useful for review, demos, and later in
   
 ---  
   
-## 3.4 Demo readiness  
+## 4.2 Richer fee-pressure context  
   
-The project should include at least one reproducible case that shows:  
+After the current fee recommendation baseline, MemOps should retrieve and normalize richer fee-market context such as:  
   
-- current inspection output,  
-- JSON output,  
-- and, once implemented, `why-stuck` reasoning.  
+- mempool block or fee-pressure data,  
+- additional recommendation context,  
+- and other backend data that helps explain transaction position more clearly.  
   
 ### Success condition  
-The demo is repeatable and not dependent on improvisation.  
+The CLI can explain transaction position with more context than a single recommendation snapshot.  
   
 ---  
   
-## 4. P0.5 — Strongly Desired After Diagnosis  
+## 4.3 Demo and artifact readiness  
   
-## 4.1 `plan-rbf`  
-After `why-stuck`, the most important extension is structured RBF planning.  
+The project should include at least one reproducible case that shows:  
+  
+- inspection output,  
+- why-stuck output,  
+- and saved artifacts once exports are implemented.  
+  
+### Success condition  
+The demo remains repeatable and not dependent on improvisation.  
+  
+---  
+  
+## 5. P0.5 — Strongly Desired After Exports  
+  
+## 5.1 `plan-rbf`  
+  
+After the current why-stuck baseline, the most important extension is structured RBF planning.  
   
 It should eventually:  
   
@@ -174,15 +209,15 @@ It should eventually:
 - and produce an auditable plan.  
   
 ### Rule  
-Do not pursue this if it weakens `why-stuck` quality.  
+Do not pursue this if it weakens the current why-stuck quality or export discipline.  
   
 ---  
   
-## 5. P1 — Strong Differentiators  
+## 6. P1 — Strong Differentiators  
   
-Only attempt these after the diagnosis milestone is stable.  
+Only attempt these after the diagnosis baseline and exports are stable.  
   
-### 5.1 `plan-cpfp`  
+### 6.1 `plan-cpfp`  
 Potentially useful, but more complex.  
   
 It may require:  
@@ -191,15 +226,15 @@ It may require:
 - package reasoning,  
 - and child fee estimation.  
   
-### 5.2 `watch-tx` or `watch-mempool`  
+### 6.2 `watch-tx` or `watch-mempool`  
 A monitoring mode could later improve operational usefulness.  
   
-### 5.3 `triage-batch`  
+### 6.3 `triage-batch`  
 Batch handling for multiple transactions may become useful later, but it is clearly secondary to the core single-transaction flow.  
   
 ---  
   
-## 6. P2 — Post-Evaluation Extensions  
+## 7. P2 — Post-Evaluation Extensions  
   
 Possible future work:  
   
@@ -210,11 +245,11 @@ Possible future work:
 - richer report generation  
 - stronger release workflows  
   
-These should only be pursued after the current MVP becomes a strong diagnostic tool.  
+These should only be pursued after the current MVP becomes a stronger and more auditable diagnostic tool.  
   
 ---  
   
-## 7. What Gets Cut First If Time Becomes Tight  
+## 8. What Gets Cut First If Time Becomes Tight  
   
 To protect quality, these items should be cut before the core is weakened:  
   
@@ -225,36 +260,39 @@ To protect quality, these items should be cut before the core is weakened:
 - cloud extras  
 - non-essential integrations  
   
-The following should **not** be cut:  
+The following should **not** be cut or regressed:  
   
 - backend configurability  
 - local transaction inspection  
+- explicit RBF analysis  
+- why-stuck diagnosis mode  
 - honest documentation  
 - automated tests  
-- `why-stuck`  
-- auditable exports  
 - demo readiness  
   
 ---  
   
-## 8. Definition of Done for the Next Milestone  
+## 9. Definition of Done for `v0.2.0`  
   
-MemOps should be considered ready for the next evaluation milestone if it can demonstrate the following:  
+MemOps should be considered ready for the `v0.2.0` milestone if it can demonstrate the following:  
   
 ### Technical  
 - inspect a real transaction from a `txid`  
 - retrieve and inspect raw hex  
 - compute and present key transaction metadata locally  
 - detect explicit opt-in RBF signaling  
-- explain why a transaction is likely stuck  
+- retrieve normalized transaction summary data  
+- retrieve normalized fee recommendations  
+- explain likely why a transaction is stuck  
 - produce a clear recommendation  
-- export machine-readable and human-readable artifacts  
+- emit both human-readable and JSON outputs  
   
 ### Documentation  
 - clear root README  
 - technical README in `src/`  
 - roadmap aligned with the actual repository state  
 - reproducible demo script  
+- assumptions aligned with current implementation  
   
 ### Open-source readiness  
 - public license  
@@ -275,7 +313,8 @@ MemOps should be considered ready for the next evaluation milestone if it can de
 The roadmap for MemOps remains intentionally strict because that is the professional choice for a single-maintainer MVP.  
   
 Phase 1 proved that the repository is executable.  
+Phase 2 proved that MemOps can move beyond inspection into an initial diagnosis layer.  
   
-The next step is to prove that MemOps can move beyond inspection and deliver clear operational diagnosis.  
+The next step is not to over-expand the tool. The next step is to make the current diagnosis baseline more auditable, more reusable, and more operationally useful.  
   
-That is the path that best supports both the CUBO+ evaluation context and the long-term open-source value of the project.
+That path best supports both the CUBO+ evaluation context and the long-term open-source value of the project.
