@@ -1,5 +1,6 @@
 """mempool.space backend adapter."""
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Final, cast
@@ -10,13 +11,13 @@ from memops.config import Network, Settings, get_settings
 from .contracts import (
     BackendError,
     BackendTransaction,
+    BackendTransactionSummary,
     TransactionNotFoundError,
     normalize_txid,
 )
 
 _SUPPORTED_NETWORKS: Final[frozenset[str]] = frozenset({"mainnet", "testnet", "signet", "regtest"})
 _DEFAULT_TIMEOUT: Final[float] = 10.0
-
 Urlopen = Callable[..., Any]
 
 
@@ -36,6 +37,47 @@ def _normalize_network(network: str) -> Network:
     return cast(Network, normalized)
 
 
+def _parse_transaction_summary_payload(
+    requested_txid: str,
+    payload: Any,
+) -> BackendTransactionSummary:
+    if not isinstance(payload, dict):
+        msg = "backend returned invalid transaction summary payload"
+        raise BackendError(msg)
+
+    payload_txid = payload.get("txid")
+    fee_sats = payload.get("fee")
+    weight_wu = payload.get("weight")
+    status = payload.get("status")
+
+    if not isinstance(payload_txid, str) or not isinstance(status, dict):
+        msg = "backend returned invalid transaction summary payload"
+        raise BackendError(msg)
+
+    try:
+        normalized_payload_txid = normalize_txid(payload_txid)
+    except ValueError as exc:
+        msg = "backend returned invalid transaction summary payload"
+        raise BackendError(msg) from exc
+
+    if normalized_payload_txid != requested_txid:
+        msg = "backend returned mismatched transaction summary"
+        raise BackendError(msg)
+
+    try:
+        return BackendTransactionSummary(
+            txid=normalized_payload_txid,
+            confirmed=status.get("confirmed"),
+            fee_sats=fee_sats,
+            weight_wu=weight_wu,
+            block_height=status.get("block_height"),
+            block_time=status.get("block_time"),
+        )
+    except ValueError as exc:
+        msg = "backend returned invalid transaction summary payload"
+        raise BackendError(msg) from exc
+
+
 def build_mempool_api_base_url(base_url: str, network: str) -> str:
     """Build the mempool.space API base URL for the configured network."""
     normalized_base_url = _normalize_base_url(base_url)
@@ -43,7 +85,6 @@ def build_mempool_api_base_url(base_url: str, network: str) -> str:
 
     if normalized_network == "mainnet":
         return f"{normalized_base_url}/api"
-
     return f"{normalized_base_url}/{normalized_network}/api"
 
 
@@ -78,22 +119,17 @@ class MempoolSpaceBackend:
         """Return the network-specific mempool.space API base URL."""
         return build_mempool_api_base_url(self.base_url, self.network)
 
-    def get_transaction(self, txid: str) -> BackendTransaction:
-        """Fetch a transaction from the backend by txid."""
-        normalized_txid = normalize_txid(txid)
-        url = f"{self.api_base_url}/tx/{normalized_txid}/hex"
-
+    def _read_response_body(self, url: str, *, txid: str) -> bytes:
         try:
             with self.urlopen(url, timeout=self.timeout) as response:
                 status = getattr(response, "status", 200)
                 if status != 200:
                     msg = f"backend returned unexpected status: {status}"
                     raise BackendError(msg)
-
-                raw_hex = response.read().decode("utf-8")
+                return response.read()
         except error.HTTPError as exc:
             if exc.code == 404:
-                msg = f"transaction not found: {normalized_txid}"
+                msg = f"transaction not found: {txid}"
                 raise TransactionNotFoundError(msg) from exc
 
             msg = f"backend returned unexpected status: {exc.code}"
@@ -102,4 +138,32 @@ class MempoolSpaceBackend:
             msg = f"backend request failed: {exc.reason}"
             raise BackendError(msg) from exc
 
+    def _read_text_response(self, url: str, *, txid: str) -> str:
+        payload = self._read_response_body(url, txid=txid)
+        try:
+            return payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            msg = "backend returned invalid text payload"
+            raise BackendError(msg) from exc
+
+    def _read_json_response(self, url: str, *, txid: str) -> Any:
+        payload = self._read_response_body(url, txid=txid)
+        try:
+            return json.loads(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            msg = "backend returned invalid JSON"
+            raise BackendError(msg) from exc
+
+    def get_transaction(self, txid: str) -> BackendTransaction:
+        """Fetch a transaction from the backend by txid."""
+        normalized_txid = normalize_txid(txid)
+        url = f"{self.api_base_url}/tx/{normalized_txid}/hex"
+        raw_hex = self._read_text_response(url, txid=normalized_txid)
         return BackendTransaction(txid=normalized_txid, raw_hex=raw_hex)
+
+    def get_transaction_summary(self, txid: str) -> BackendTransactionSummary:
+        """Fetch normalized transaction summary data for the given txid."""
+        normalized_txid = normalize_txid(txid)
+        url = f"{self.api_base_url}/tx/{normalized_txid}"
+        payload = self._read_json_response(url, txid=normalized_txid)
+        return _parse_transaction_summary_payload(normalized_txid, payload)

@@ -3,6 +3,7 @@
 from .contracts import (
     BackendError,
     BackendTransaction,
+    BackendTransactionSummary,
     TransactionBackend,
     TransactionNotFoundError,
     normalize_raw_hex,
@@ -13,6 +14,7 @@ from .mempool import MempoolSpaceBackend, build_mempool_api_base_url
 __all__ = [
     "BackendError",
     "BackendTransaction",
+    "BackendTransactionSummary",
     "MempoolSpaceBackend",
     "TransactionBackend",
     "TransactionNotFoundError",
