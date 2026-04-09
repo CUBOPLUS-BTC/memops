@@ -37,6 +37,9 @@ dev = [
     "ruff",
 ]
 
+[project.scripts]
+memops = "memops.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/memops"]
 
