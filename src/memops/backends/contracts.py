@@ -1,4 +1,4 @@
-"""Backend contracts and value objects for transaction retrieval."""
+"""Backend contracts and value objects for MemOps data retrieval."""
 
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -135,11 +135,63 @@ class BackendTransactionSummary:
         object.__setattr__(self, "block_time", normalized_block_time)
 
 
+@dataclass(frozen=True, slots=True)
+class BackendFeeRecommendations:
+    """Normalized fee recommendation bands returned by a backend."""
+
+    fastest_fee_sat_vb: int
+    half_hour_fee_sat_vb: int
+    hour_fee_sat_vb: int
+    economy_fee_sat_vb: int
+    minimum_fee_sat_vb: int
+
+    def __post_init__(self) -> None:
+        normalized_fastest = _normalize_positive_int(
+            self.fastest_fee_sat_vb,
+            field_name="fastest_fee_sat_vb",
+        )
+        normalized_half_hour = _normalize_positive_int(
+            self.half_hour_fee_sat_vb,
+            field_name="half_hour_fee_sat_vb",
+        )
+        normalized_hour = _normalize_positive_int(
+            self.hour_fee_sat_vb,
+            field_name="hour_fee_sat_vb",
+        )
+        normalized_economy = _normalize_positive_int(
+            self.economy_fee_sat_vb,
+            field_name="economy_fee_sat_vb",
+        )
+        normalized_minimum = _normalize_positive_int(
+            self.minimum_fee_sat_vb,
+            field_name="minimum_fee_sat_vb",
+        )
+
+        object.__setattr__(self, "fastest_fee_sat_vb", normalized_fastest)
+        object.__setattr__(self, "half_hour_fee_sat_vb", normalized_half_hour)
+        object.__setattr__(self, "hour_fee_sat_vb", normalized_hour)
+        object.__setattr__(self, "economy_fee_sat_vb", normalized_economy)
+        object.__setattr__(self, "minimum_fee_sat_vb", normalized_minimum)
+
+        if not (
+            normalized_fastest
+            >= normalized_half_hour
+            >= normalized_hour
+            >= normalized_economy
+            >= normalized_minimum
+        ):
+            msg = "fee recommendations must be monotonic"
+            raise ValueError(msg)
+
+
 class TransactionBackend(Protocol):
-    """Protocol for objects that can fetch raw transaction data."""
+    """Protocol for objects that can fetch backend transaction data."""
 
     def get_transaction(self, txid: str) -> BackendTransaction:
         """Fetch raw transaction data for the given txid."""
 
     def get_transaction_summary(self, txid: str) -> BackendTransactionSummary:
         """Fetch normalized transaction summary data for the given txid."""
+
+    def get_fee_recommendations(self) -> BackendFeeRecommendations:
+        """Fetch normalized fee recommendations."""

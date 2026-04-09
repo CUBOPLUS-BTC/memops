@@ -5,6 +5,7 @@ import pytest
 
 from memops.backends import (
     BackendError,
+    BackendFeeRecommendations,
     BackendTransaction,
     BackendTransactionSummary,
     MempoolSpaceBackend,
@@ -52,6 +53,25 @@ def make_transaction_summary_body(
             "fee": fee,
             "weight": weight,
             "status": status,
+        }
+    )
+
+
+def make_fee_recommendations_body(
+    *,
+    fastest_fee: int = 25,
+    half_hour_fee: int = 20,
+    hour_fee: int = 15,
+    economy_fee: int = 10,
+    minimum_fee: int = 5,
+) -> str:
+    return json.dumps(
+        {
+            "fastestFee": fastest_fee,
+            "halfHourFee": half_hour_fee,
+            "hourFee": hour_fee,
+            "economyFee": economy_fee,
+            "minimumFee": minimum_fee,
         }
     )
 
@@ -159,6 +179,42 @@ def test_mempool_space_backend_fetches_transaction_summary_for_confirmed_transac
     )
 
 
+def test_mempool_space_backend_fetches_fee_recommendations() -> None:
+    calls: list[tuple[str, float]] = []
+
+    def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
+        calls.append((url, timeout))
+        return FakeResponse(
+            make_fee_recommendations_body(
+                fastest_fee=30,
+                half_hour_fee=24,
+                hour_fee=18,
+                economy_fee=12,
+                minimum_fee=6,
+            )
+        )
+
+    backend = MempoolSpaceBackend(
+        base_url="https://mempool.space/",
+        network="testnet",
+        timeout=4.0,
+        urlopen=fake_urlopen,
+    )
+
+    recommendations = backend.get_fee_recommendations()
+
+    assert calls == [
+        ("https://mempool.space/testnet/api/v1/fees/recommended", 4.0),
+    ]
+    assert recommendations == BackendFeeRecommendations(
+        fastest_fee_sat_vb=30,
+        half_hour_fee_sat_vb=24,
+        hour_fee_sat_vb=18,
+        economy_fee_sat_vb=12,
+        minimum_fee_sat_vb=6,
+    )
+
+
 def test_mempool_space_backend_from_settings_uses_application_config() -> None:
     settings = Settings(
         backend_url="https://example.com/",
@@ -201,6 +257,19 @@ def test_mempool_space_backend_maps_not_found_errors_for_transaction_summary() -
         backend.get_transaction_summary(VALID_TXID)
 
 
+def test_mempool_space_backend_maps_fee_recommendations_404_to_backend_error() -> None:
+    def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
+        raise error.HTTPError(url, 404, "not found", hdrs=None, fp=None)
+
+    backend = MempoolSpaceBackend(
+        base_url="https://mempool.space",
+        urlopen=fake_urlopen,
+    )
+
+    with pytest.raises(BackendError, match="unexpected status: 404"):
+        backend.get_fee_recommendations()
+
+
 def test_mempool_space_backend_maps_unexpected_http_errors() -> None:
     def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
         raise error.HTTPError(url, 500, "server error", hdrs=None, fp=None)
@@ -240,6 +309,19 @@ def test_mempool_space_backend_rejects_invalid_transaction_summary_json() -> Non
         backend.get_transaction_summary(VALID_TXID)
 
 
+def test_mempool_space_backend_rejects_invalid_fee_recommendations_json() -> None:
+    def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
+        return FakeResponse("not-json")
+
+    backend = MempoolSpaceBackend(
+        base_url="https://mempool.space",
+        urlopen=fake_urlopen,
+    )
+
+    with pytest.raises(BackendError, match="invalid JSON"):
+        backend.get_fee_recommendations()
+
+
 def test_mempool_space_backend_rejects_invalid_transaction_summary_payload() -> None:
     def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
         return FakeResponse(
@@ -259,6 +341,49 @@ def test_mempool_space_backend_rejects_invalid_transaction_summary_payload() -> 
 
     with pytest.raises(BackendError, match="invalid transaction summary payload"):
         backend.get_transaction_summary(VALID_TXID)
+
+
+def test_mempool_space_backend_rejects_invalid_fee_recommendations_payload() -> None:
+    def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
+        return FakeResponse(
+            json.dumps(
+                {
+                    "fastestFee": 30,
+                    "halfHourFee": 24,
+                    "hourFee": 18,
+                    "economyFee": 12,
+                }
+            )
+        )
+
+    backend = MempoolSpaceBackend(
+        base_url="https://mempool.space",
+        urlopen=fake_urlopen,
+    )
+
+    with pytest.raises(BackendError, match="invalid fee recommendations payload"):
+        backend.get_fee_recommendations()
+
+
+def test_mempool_space_backend_rejects_non_monotonic_fee_recommendations_payload() -> None:
+    def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
+        return FakeResponse(
+            make_fee_recommendations_body(
+                fastest_fee=20,
+                half_hour_fee=22,
+                hour_fee=18,
+                economy_fee=12,
+                minimum_fee=6,
+            )
+        )
+
+    backend = MempoolSpaceBackend(
+        base_url="https://mempool.space",
+        urlopen=fake_urlopen,
+    )
+
+    with pytest.raises(BackendError, match="invalid fee recommendations payload"):
+        backend.get_fee_recommendations()
 
 
 def test_mempool_space_backend_rejects_mismatched_transaction_summary_txid() -> None:

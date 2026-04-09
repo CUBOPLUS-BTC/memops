@@ -1,6 +1,7 @@
 import pytest
 
 from memops.backends import (
+    BackendFeeRecommendations,
     BackendTransaction,
     BackendTransactionSummary,
     normalize_raw_hex,
@@ -115,4 +116,42 @@ def test_backend_transaction_summary_rejects_invalid_block_metadata_for_confirme
             fee_sats=1,
             weight_wu=4,
             block_height=0,
+        )
+
+
+def test_backend_fee_recommendations_accepts_monotonic_values() -> None:
+    recommendations = BackendFeeRecommendations(
+        fastest_fee_sat_vb=25,
+        half_hour_fee_sat_vb=20,
+        hour_fee_sat_vb=15,
+        economy_fee_sat_vb=10,
+        minimum_fee_sat_vb=5,
+    )
+
+    assert recommendations.fastest_fee_sat_vb == 25
+    assert recommendations.half_hour_fee_sat_vb == 20
+    assert recommendations.hour_fee_sat_vb == 15
+    assert recommendations.economy_fee_sat_vb == 10
+    assert recommendations.minimum_fee_sat_vb == 5
+
+
+def test_backend_fee_recommendations_rejects_non_positive_values() -> None:
+    with pytest.raises(ValueError, match="minimum_fee_sat_vb must be positive"):
+        BackendFeeRecommendations(
+            fastest_fee_sat_vb=10,
+            half_hour_fee_sat_vb=8,
+            hour_fee_sat_vb=6,
+            economy_fee_sat_vb=4,
+            minimum_fee_sat_vb=0,
+        )
+
+
+def test_backend_fee_recommendations_rejects_non_monotonic_values() -> None:
+    with pytest.raises(ValueError, match="must be monotonic"):
+        BackendFeeRecommendations(
+            fastest_fee_sat_vb=10,
+            half_hour_fee_sat_vb=12,
+            hour_fee_sat_vb=9,
+            economy_fee_sat_vb=4,
+            minimum_fee_sat_vb=1,
         )

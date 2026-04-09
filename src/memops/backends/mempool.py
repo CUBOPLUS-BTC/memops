@@ -10,6 +10,7 @@ from memops.config import Network, Settings, get_settings
 
 from .contracts import (
     BackendError,
+    BackendFeeRecommendations,
     BackendTransaction,
     BackendTransactionSummary,
     TransactionNotFoundError,
@@ -78,6 +79,24 @@ def _parse_transaction_summary_payload(
         raise BackendError(msg) from exc
 
 
+def _parse_fee_recommendations_payload(payload: Any) -> BackendFeeRecommendations:
+    if not isinstance(payload, dict):
+        msg = "backend returned invalid fee recommendations payload"
+        raise BackendError(msg)
+
+    try:
+        return BackendFeeRecommendations(
+            fastest_fee_sat_vb=payload.get("fastestFee"),
+            half_hour_fee_sat_vb=payload.get("halfHourFee"),
+            hour_fee_sat_vb=payload.get("hourFee"),
+            economy_fee_sat_vb=payload.get("economyFee"),
+            minimum_fee_sat_vb=payload.get("minimumFee"),
+        )
+    except ValueError as exc:
+        msg = "backend returned invalid fee recommendations payload"
+        raise BackendError(msg) from exc
+
+
 def build_mempool_api_base_url(base_url: str, network: str) -> str:
     """Build the mempool.space API base URL for the configured network."""
     normalized_base_url = _normalize_base_url(base_url)
@@ -119,7 +138,12 @@ class MempoolSpaceBackend:
         """Return the network-specific mempool.space API base URL."""
         return build_mempool_api_base_url(self.base_url, self.network)
 
-    def _read_response_body(self, url: str, *, txid: str) -> bytes:
+    def _read_response_body(
+        self,
+        url: str,
+        *,
+        not_found_message: str | None = None,
+    ) -> bytes:
         try:
             with self.urlopen(url, timeout=self.timeout) as response:
                 status = getattr(response, "status", 200)
@@ -128,9 +152,8 @@ class MempoolSpaceBackend:
                     raise BackendError(msg)
                 return response.read()
         except error.HTTPError as exc:
-            if exc.code == 404:
-                msg = f"transaction not found: {txid}"
-                raise TransactionNotFoundError(msg) from exc
+            if exc.code == 404 and not_found_message is not None:
+                raise TransactionNotFoundError(not_found_message) from exc
 
             msg = f"backend returned unexpected status: {exc.code}"
             raise BackendError(msg) from exc
@@ -138,16 +161,26 @@ class MempoolSpaceBackend:
             msg = f"backend request failed: {exc.reason}"
             raise BackendError(msg) from exc
 
-    def _read_text_response(self, url: str, *, txid: str) -> str:
-        payload = self._read_response_body(url, txid=txid)
+    def _read_text_response(
+        self,
+        url: str,
+        *,
+        not_found_message: str | None = None,
+    ) -> str:
+        payload = self._read_response_body(url, not_found_message=not_found_message)
         try:
             return payload.decode("utf-8")
         except UnicodeDecodeError as exc:
             msg = "backend returned invalid text payload"
             raise BackendError(msg) from exc
 
-    def _read_json_response(self, url: str, *, txid: str) -> Any:
-        payload = self._read_response_body(url, txid=txid)
+    def _read_json_response(
+        self,
+        url: str,
+        *,
+        not_found_message: str | None = None,
+    ) -> Any:
+        payload = self._read_response_body(url, not_found_message=not_found_message)
         try:
             return json.loads(payload)
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -158,12 +191,24 @@ class MempoolSpaceBackend:
         """Fetch a transaction from the backend by txid."""
         normalized_txid = normalize_txid(txid)
         url = f"{self.api_base_url}/tx/{normalized_txid}/hex"
-        raw_hex = self._read_text_response(url, txid=normalized_txid)
+        raw_hex = self._read_text_response(
+            url,
+            not_found_message=f"transaction not found: {normalized_txid}",
+        )
         return BackendTransaction(txid=normalized_txid, raw_hex=raw_hex)
 
     def get_transaction_summary(self, txid: str) -> BackendTransactionSummary:
         """Fetch normalized transaction summary data for the given txid."""
         normalized_txid = normalize_txid(txid)
         url = f"{self.api_base_url}/tx/{normalized_txid}"
-        payload = self._read_json_response(url, txid=normalized_txid)
+        payload = self._read_json_response(
+            url,
+            not_found_message=f"transaction not found: {normalized_txid}",
+        )
         return _parse_transaction_summary_payload(normalized_txid, payload)
+
+    def get_fee_recommendations(self) -> BackendFeeRecommendations:
+        """Fetch normalized fee recommendations."""
+        url = f"{self.api_base_url}/v1/fees/recommended"
+        payload = self._read_json_response(url)
+        return _parse_fee_recommendations_payload(payload)
