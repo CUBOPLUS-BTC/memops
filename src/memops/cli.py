@@ -4,15 +4,18 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, TextIO
 
 from memops.backends import BackendError, MempoolSpaceBackend, TransactionBackend
+from memops.config import get_settings
 from memops.services import (
     DiagnosedTransaction,
     InspectedTransaction,
     diagnose_why_stuck,
     inspect_transaction,
 )
+from memops.services.exports import DiagnosisArtifactPaths, export_diagnosis_artifacts
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -56,6 +59,20 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
+def _should_export_diagnosis(args: argparse.Namespace) -> bool:
+    """Return True when the CLI should write diagnosis artifacts."""
+    return args.why_stuck and bool(args.export or args.export_dir)
+
+
+def _resolve_export_base_dir(args: argparse.Namespace) -> Path | None:
+    """Resolve the base directory for diagnosis artifact exports."""
+    if not _should_export_diagnosis(args):
+        return None
+    if args.export_dir:
+        return Path(args.export_dir)
+    return get_settings().export_dir
+
+
 def _format_optional_int(value: int | None) -> str:
     """Render an optional integer field for text output."""
     return "none" if value is None else str(value)
@@ -64,6 +81,15 @@ def _format_optional_int(value: int | None) -> str:
 def _format_optional_float(value: float | None) -> str:
     """Render an optional float field for text output."""
     return "none" if value is None else f"{value:.2f}"
+
+
+def artifact_paths_to_dict(artifact_paths: DiagnosisArtifactPaths) -> dict[str, str]:
+    """Convert exported artifact paths into a JSON-serializable payload."""
+    return {
+        "artifact_dir": str(artifact_paths.artifact_dir),
+        "analysis_json_path": str(artifact_paths.analysis_json_path),
+        "report_markdown_path": str(artifact_paths.report_markdown_path),
+    }
 
 
 def inspection_to_dict(inspected: InspectedTransaction) -> dict[str, Any]:
@@ -86,12 +112,16 @@ def inspection_to_dict(inspected: InspectedTransaction) -> dict[str, Any]:
     }
 
 
-def diagnosis_to_dict(diagnosed: DiagnosedTransaction) -> dict[str, Any]:
+def diagnosis_to_dict(
+    diagnosed: DiagnosedTransaction,
+    *,
+    artifact_paths: DiagnosisArtifactPaths | None = None,
+) -> dict[str, Any]:
     """Convert a diagnosed transaction into a JSON-serializable payload."""
     inspection_payload = inspection_to_dict(diagnosed.inspection)
     recommended_fees = diagnosed.fee_context.recommended_fees
 
-    return {
+    payload: dict[str, Any] = {
         "txid": diagnosed.inspection.txid,
         "raw_hex": diagnosed.inspection.raw_hex,
         "parsed": inspection_payload["parsed"],
@@ -140,15 +170,28 @@ def diagnosis_to_dict(diagnosed: DiagnosedTransaction) -> dict[str, Any]:
         },
     }
 
+    if artifact_paths is not None:
+        payload["artifacts"] = artifact_paths_to_dict(artifact_paths)
+
+    return payload
+
 
 def format_inspection_json(inspected: InspectedTransaction) -> str:
     """Render an inspected transaction as formatted JSON."""
     return json.dumps(inspection_to_dict(inspected), indent=2, sort_keys=True)
 
 
-def format_why_stuck_json(diagnosed: DiagnosedTransaction) -> str:
+def format_why_stuck_json(
+    diagnosed: DiagnosedTransaction,
+    *,
+    artifact_paths: DiagnosisArtifactPaths | None = None,
+) -> str:
     """Render a diagnosed transaction as formatted JSON."""
-    return json.dumps(diagnosis_to_dict(diagnosed), indent=2, sort_keys=True)
+    return json.dumps(
+        diagnosis_to_dict(diagnosed, artifact_paths=artifact_paths),
+        indent=2,
+        sort_keys=True,
+    )
 
 
 def format_inspection_report(inspected: InspectedTransaction) -> str:
@@ -177,34 +220,49 @@ def format_inspection_report(inspected: InspectedTransaction) -> str:
     )
 
 
-def format_why_stuck_report(diagnosed: DiagnosedTransaction) -> str:
+def format_why_stuck_report(
+    diagnosed: DiagnosedTransaction,
+    *,
+    artifact_paths: DiagnosisArtifactPaths | None = None,
+) -> str:
     """Render a diagnosed transaction as a human-readable report."""
     summary = diagnosed.summary
     fee_context = diagnosed.fee_context
     diagnosis = diagnosed.diagnosis
 
-    return "\n".join(
-        [
-            f"txid: {diagnosed.inspection.txid}",
-            f"confirmed: {'yes' if summary.confirmed else 'no'}",
-            f"fee_sats: {summary.fee_sats}",
-            f"weight_wu: {summary.weight_wu}",
-            f"virtual_size_vbytes: {summary.virtual_size_vbytes}",
-            f"fee_rate_sat_vb: {fee_context.fee_rate_sat_vb:.2f}",
-            f"market_position: {fee_context.market_position.value}",
-            f"target_fee_rate_sat_vb: {_format_optional_int(fee_context.target_fee_rate_sat_vb)}",
-            (
-                "fee_rate_shortfall_sat_vb: "
-                f"{_format_optional_float(fee_context.fee_rate_shortfall_sat_vb)}"
-            ),
-            ("explicit_rbf: yes" if diagnosis.explicitly_signals_rbf else "explicit_rbf: no"),
-            f"recommended_action: {diagnosis.recommended_action.value}",
-            f"severity: {diagnosis.severity.value}",
-            f"reason: {diagnosis.reason.value}",
-            f"summary: {diagnosis.summary}",
-            f"explanation: {diagnosis.explanation}",
-        ]
-    )
+    lines = [
+        f"txid: {diagnosed.inspection.txid}",
+        f"confirmed: {'yes' if summary.confirmed else 'no'}",
+        f"fee_sats: {summary.fee_sats}",
+        f"weight_wu: {summary.weight_wu}",
+        f"virtual_size_vbytes: {summary.virtual_size_vbytes}",
+        f"fee_rate_sat_vb: {fee_context.fee_rate_sat_vb:.2f}",
+        f"market_position: {fee_context.market_position.value}",
+        (f"target_fee_rate_sat_vb: {_format_optional_int(fee_context.target_fee_rate_sat_vb)}"),
+        (
+            "fee_rate_shortfall_sat_vb: "
+            f"{_format_optional_float(fee_context.fee_rate_shortfall_sat_vb)}"
+        ),
+        ("explicit_rbf: yes" if diagnosis.explicitly_signals_rbf else "explicit_rbf: no"),
+        f"recommended_action: {diagnosis.recommended_action.value}",
+        f"severity: {diagnosis.severity.value}",
+        f"reason: {diagnosis.reason.value}",
+        f"summary: {diagnosis.summary}",
+        f"explanation: {diagnosis.explanation}",
+    ]
+
+    if artifact_paths is not None:
+        lines.extend(
+            [
+                "",
+                "Artifacts written:",
+                f"- directory: {artifact_paths.artifact_dir}",
+                f"- analysis_json: {artifact_paths.analysis_json_path}",
+                f"- report_markdown: {artifact_paths.report_markdown_path}",
+            ]
+        )
+
+    return "\n".join(lines)
 
 
 def main(
@@ -228,14 +286,20 @@ def main(
         return 2
 
     try:
+        export_base_dir = _resolve_export_base_dir(args)
         resolved_backend = backend if backend is not None else MempoolSpaceBackend.from_settings()
 
         if args.why_stuck:
             diagnosed = diagnose_why_stuck(args.txid, resolved_backend)
+            artifact_paths = None
+
+            if export_base_dir is not None:
+                artifact_paths = export_diagnosis_artifacts(diagnosed, export_base_dir)
+
             output = (
-                format_why_stuck_json(diagnosed)
+                format_why_stuck_json(diagnosed, artifact_paths=artifact_paths)
                 if args.output_json
-                else format_why_stuck_report(diagnosed)
+                else format_why_stuck_report(diagnosed, artifact_paths=artifact_paths)
             )
         else:
             inspected = inspect_transaction(args.txid, resolved_backend)
@@ -244,7 +308,7 @@ def main(
                 if args.output_json
                 else format_inspection_report(inspected)
             )
-    except (BackendError, ValueError) as exc:
+    except (BackendError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=resolved_stderr)
         return 1
 
