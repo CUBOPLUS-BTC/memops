@@ -1,7 +1,13 @@
+import json
 from io import StringIO
 
 from memops.backends import BackendTransaction, TransactionNotFoundError
-from memops.cli import format_inspection_report, main
+from memops.cli import (
+    format_inspection_json,
+    format_inspection_report,
+    inspection_to_dict,
+    main,
+)
 from memops.services import inspect_transaction
 
 VALID_TXID = "ab" * 32
@@ -52,6 +58,45 @@ class FailingBackend:
         raise TransactionNotFoundError(f"transaction not found: {txid}")
 
 
+def test_inspection_to_dict_returns_expected_structure() -> None:
+    inspected = inspect_transaction(
+        VALID_TXID,
+        StubBackend(BackendTransaction(txid=VALID_TXID, raw_hex=NON_SEGWIT_RBF_HEX)),
+    )
+
+    assert inspection_to_dict(inspected) == {
+        "txid": VALID_TXID,
+        "raw_hex": NON_SEGWIT_RBF_HEX,
+        "parsed": {
+            "version": 1,
+            "input_count": 1,
+            "output_count": 1,
+            "locktime": 0,
+            "sequences": [0xFFFFFFFD],
+            "is_segwit": False,
+        },
+        "analysis": {
+            "signals_explicit_rbf": True,
+            "signaling_input_indexes": [0],
+        },
+    }
+
+
+def test_format_inspection_json_returns_valid_json() -> None:
+    inspected = inspect_transaction(
+        VALID_TXID,
+        StubBackend(BackendTransaction(txid=VALID_TXID, raw_hex=SEGWIT_FINAL_HEX)),
+    )
+
+    payload = json.loads(format_inspection_json(inspected))
+
+    assert payload["txid"] == VALID_TXID
+    assert payload["parsed"]["version"] == 2
+    assert payload["parsed"]["is_segwit"] is True
+    assert payload["analysis"]["signals_explicit_rbf"] is False
+    assert payload["analysis"]["signaling_input_indexes"] == []
+
+
 def test_format_inspection_report_includes_expected_fields() -> None:
     inspected = inspect_transaction(
         VALID_TXID,
@@ -89,6 +134,28 @@ def test_main_prints_report_and_returns_zero() -> None:
     assert "segwit: yes" in output
     assert "explicit_rbf: no" in output
     assert "signaling_inputs: none" in output
+
+
+def test_main_prints_json_report_when_requested() -> None:
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = main(
+        ["--json", VALID_TXID],
+        backend=StubBackend(BackendTransaction(txid=VALID_TXID, raw_hex=NON_SEGWIT_RBF_HEX)),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == 0
+    assert stderr.getvalue() == ""
+
+    payload = json.loads(stdout.getvalue())
+    assert payload["txid"] == VALID_TXID
+    assert payload["parsed"]["version"] == 1
+    assert payload["parsed"]["is_segwit"] is False
+    assert payload["analysis"]["signals_explicit_rbf"] is True
+    assert payload["analysis"]["signaling_input_indexes"] == [0]
 
 
 def test_main_reports_backend_errors_and_returns_one() -> None:
