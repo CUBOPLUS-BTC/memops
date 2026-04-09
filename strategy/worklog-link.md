@@ -60,6 +60,20 @@ Instead, it should capture the **process** behind them, including:
   
 ---  
   
+## Repository Workflow Note  
+  
+Phase 1 was completed directly on `main` using small atomic commits as part of the executable MVP bootstrap.  
+  
+Starting in Phase 2, MemOps moves to a protected-`main` workflow based on:  
+- short-lived branches,  
+- Draft PRs,  
+- CI-gated merges,  
+- and stable milestone tags.  
+  
+This change improves stability and auditability without introducing unnecessary process overhead for a single-maintainer repository.  
+
+---
+
 ## Reminder Before Submission  
   
 Before final submission, make sure that:  

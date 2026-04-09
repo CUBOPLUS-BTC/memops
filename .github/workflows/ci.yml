@@ -1,13 +1,22 @@
 name: CI
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  checks:
+  quality:
+    name: quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository
@@ -28,4 +37,4 @@ jobs:
         run: uv run ruff check .
 
       - name: Run tests
-        run: uv run pytest || [ $? -eq 5 ]
+        run: uv run pytest -q

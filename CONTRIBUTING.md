@@ -88,6 +88,24 @@ The project values clarity more than cleverness.
   
 ---  
   
+## Branching and Pull Request Workflow  
+  
+Starting in Phase 2, MemOps follows a lightweight GitHub Flow suitable for a single-maintainer MVP:  
+  
+- `main` is the stable branch and should remain demoable.  
+- New work starts from short-lived branches such as `feat/...`, `fix/...`, `docs/...`, `test/...`, `chore/...`, `ci/...`, or `refactor/...`.  
+- Branches should be pushed early to preserve visible progress.  
+- Opening a Draft PR early is encouraged.  
+- Merges into `main` should happen through pull requests after CI passes.  
+- Preferred merge method: **Rebase and merge**.  
+- **Squash and merge** may be used for noisy cleanup-only branches, but preserving small logical commits is preferred.  
+- Stable milestones should be tagged on `main` (for example `phase-1-complete`, `v0.1.0`).  
+  
+Phase 1 was bootstrapped directly on `main` with small atomic commits as part of the executable MVP baseline. Future work uses the branch-based workflow above to keep `main` stable while preserving auditability.  
+
+
+---
+
 ## Security and Safety Notes  
   
 MemOps operates in a sensitive domain: Bitcoin transaction handling and incident response logic.  
