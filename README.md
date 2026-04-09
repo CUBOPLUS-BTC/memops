@@ -53,6 +53,7 @@ The current executable baseline can:
 - provide an initial `why-stuck` diagnosis and recommendation,  
 - render a human-readable report,  
 - render machine-readable JSON output,  
+- write auditable why-stuck diagnosis artifacts to a deterministic export directory layout,
 - and load runtime settings from environment variables or a local `.env` file.  
   
 ---  
@@ -82,6 +83,32 @@ And its JSON mode with:
 ```bash  
 uv run memops --why-stuck --json <txid>  
 ```  
+  
+You can also export diagnosis artifacts to the configured export directory:  
+  
+```bash  
+uv run memops --why-stuck --export <txid>  
+```  
+  
+You can override the export destination explicitly:  
+  
+```bash  
+uv run memops --why-stuck --export-dir demo/output <txid>  
+```  
+  
+And JSON mode can export while also surfacing artifact paths:  
+  
+```bash  
+uv run memops --why-stuck --json --export <txid>  
+```  
+  
+When export is enabled, MemOps writes:  
+  
+- `<export_dir>/<txid>/analysis.json`  
+- `<export_dir>/<txid>/report.md`  
+  
+In text mode, the CLI appends an `Artifacts written:` section.  
+In JSON mode, the output includes an `artifacts` object with the written paths.  
   
 The module entrypoint works too:  
   
@@ -127,6 +154,8 @@ The JSON modes are intentionally structured for scripting and review:
   - `summary`  
   - `fee_context`  
   - `diagnosis`  
+- why-stuck JSON with export also adds:  
+  - `artifacts`  
   
 This keeps the current CLI useful both for direct terminal use and for shell-based workflows.  
   
@@ -152,14 +181,17 @@ MEMOPS_EXPORT_DIR=./demo/output
   
 Current settings:  
   
-- `MEMOPS_BACKEND_URL`    
+- `MEMOPS_BACKEND_URL`  
+    
   Base URL for a mempool-compatible backend.  
-- `MEMOPS_NETWORK`    
+- `MEMOPS_NETWORK`  
+    
   Supported values: `mainnet`, `testnet`, `signet`, `regtest`.  
-- `MEMOPS_EXPORT_DIR`    
-  Reserved for upcoming export workflows.  
+- `MEMOPS_EXPORT_DIR`  
+    
+  Base directory used by `--why-stuck --export` for diagnosis artifacts.  
   
-The default backend example is `https://mempool.space`, but the project is intended to remain backend-configurable.  
+The default backend example is `https://mempool.space`, but the project is intended to remain backend-configurable. 
   
 ---  
   
@@ -251,15 +283,16 @@ MemOps now includes both an executable inspection baseline and an initial why-st
 - human-readable CLI output  
 - JSON CLI output  
 - `memops` console script  
+- auditable why-stuck diagnosis artifact export 
   
 ### Next planned capabilities  
   
 The next milestone after this diagnosis baseline is likely to include work such as:  
   
-- auditable export artifacts,  
 - richer fee-pressure context,  
 - structured RBF planning,  
-- and optional cleanup of unused runtime dependencies.  
+- export failure-path hardening,  
+- and optional cleanup of unused runtime dependencies. 
   
 The project is still intentionally scoped as a focused single-maintainer MVP.  
   
