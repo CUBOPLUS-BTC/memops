@@ -2,13 +2,15 @@
   
 ## Purpose  
   
-This document defines the recommended demo flow for the current executable MVP of MemOps.  
+This document defines the recommended demo flow for the current executable baseline of MemOps.  
   
-The goal of the demo is not to show many features. The goal is to prove one thing clearly:  
+The goal of the demo is not to show many features. The goal is to prove two things clearly:  
   
-> **MemOps is already an executable, verification-first transaction inspection tool — not just a repository plan.**  
+> **MemOps is already an executable verification-first transaction inspection tool.**  
+>  
+> **MemOps also now provides an initial why-stuck diagnosis workflow.**  
   
-The current demo should therefore stay disciplined and aligned with what the code actually does today.  
+The demo should stay disciplined and aligned with what the code actually does today.  
   
 ---  
   
@@ -18,12 +20,13 @@ By the end of the demo, the audience should understand:
   
 - what problem MemOps is addressing,  
 - why backend data should not be treated as the entire analysis layer,  
-- what the current CLI can already inspect locally,  
-- and why this is a credible base for later `why-stuck` and response workflows.  
+- what the CLI can already inspect locally,  
+- how the current why-stuck mode uses fee context plus local explicit-RBF reasoning,  
+- and why this is a credible base for later export and response workflows.  
   
 ---  
   
-## What the Current MVP Demonstrates  
+## What the Current Baseline Demonstrates  
   
 Today, MemOps can already:  
   
@@ -32,6 +35,10 @@ Today, MemOps can already:
 - retrieve raw transaction hex,  
 - parse key transaction fields locally,  
 - detect explicit opt-in RBF signaling,  
+- retrieve normalized backend transaction summary data,  
+- retrieve normalized backend fee recommendations,  
+- classify the transaction fee position relative to current recommendation bands,  
+- provide an initial why-stuck diagnosis,  
 - and render the result in both human-readable and JSON form.  
   
 That is enough to support a real technical walkthrough.  
@@ -67,7 +74,7 @@ If a live backend will be used, also prepare a fallback explanation in case the 
   
 Suggested message:  
   
-> “MemOps is a verification-first Bitcoin CLI. The current MVP focuses on transaction inspection: fetch the raw transaction, inspect it locally, and report what matters for later operational reasoning.”  
+> “MemOps is a verification-first Bitcoin CLI. The current baseline fetches a transaction, inspects key properties locally, and can now also provide an initial why-stuck diagnosis using backend fee context plus local explicit-RBF analysis.”  
   
 This sets honest expectations.  
   
@@ -126,22 +133,52 @@ Make the trust model explicit:
   
 - the backend provides the raw transaction hex,  
 - MemOps parses the transaction locally,  
-- and explicit RBF signaling is derived locally from sequence values.  
+- explicit RBF signaling is derived locally from sequence values,  
+- transaction summary and fee recommendations come from the backend,  
+- and the why-stuck conclusion is then built locally from normalized data plus local policy.  
   
 Suggested speaking line:  
   
-> “The backend is a data source. The interpretation shown here is intentionally kept on the client side.”  
+> “The backend is a data source. The interpretation shown here is intentionally kept on the client side whenever practical.”  
   
 This reinforces the project philosophy.  
   
 ---  
   
-## 5. Run the JSON mode  
+## 5. Run the human-readable why-stuck command  
   
-Show that the same inspection can be exported in a machine-friendly form:  
+Use the real command that exists today:  
   
 ```bash  
-uv run memops --json <txid>  
+uv run memops --why-stuck <txid>  
+```  
+  
+What to highlight:  
+  
+- confirmation status,  
+- fee paid,  
+- virtual size,  
+- fee rate,  
+- current fee-band position,  
+- target fee band,  
+- explicit RBF result,  
+- recommended action,  
+- and the final summary and explanation.  
+  
+Suggested speaking line:  
+  
+> “This is not full rescue automation. It is an initial diagnosis layer that explains whether the transaction looks underpriced relative to current fee conditions and whether fee bumping is likely plausible.”  
+  
+That wording stays accurate.  
+  
+---  
+  
+## 6. Run the JSON mode  
+  
+Show that the same diagnosis can be emitted in a machine-friendly form:  
+  
+```bash  
+uv run memops --why-stuck --json <txid>  
 ```  
   
 What to highlight:  
@@ -149,6 +186,9 @@ What to highlight:
 - `raw_hex`  
 - `parsed`  
 - `analysis`  
+- `summary`  
+- `fee_context`  
+- `diagnosis`  
   
 Suggested speaking line:  
   
@@ -156,18 +196,18 @@ Suggested speaking line:
   
 ---  
   
-## 6. Connect the current MVP to the roadmap  
+## 7. Connect the current baseline to the roadmap  
   
 Close the technical walkthrough by explaining what this baseline enables next:  
   
-- fee-pressure comparison,  
-- `why-stuck` reasoning,  
-- auditable report generation,  
-- and structured RBF planning.  
+- auditable export artifacts,  
+- richer fee-pressure context,  
+- structured RBF planning,  
+- and later response workflows.  
   
 Suggested speaking line:  
   
-> “This MVP already proves the inspection pipeline. The next milestone is to move from inspection to diagnosis.”  
+> “The project now proves both inspection and initial diagnosis. The next step is to make those results easier to export, review, and act on.”  
   
 ---  
   
@@ -177,7 +217,7 @@ Suggested speaking line:
 ~1.5 to 2 minutes  
   
 ### Technical walkthrough  
-~2 to 3 minutes  
+~2.5 to 3.5 minutes  
   
 This keeps the full demo compact and credible.  
   
@@ -188,9 +228,10 @@ This keeps the full demo compact and credible.
 If the live backend fails or the environment becomes unstable, use one or more of the following:  
   
 - a saved terminal capture of `uv run memops <txid>`,  
-- a saved JSON output from `uv run memops --json <txid>`,  
+- a saved terminal capture of `uv run memops --why-stuck <txid>`,  
+- a saved JSON output from `uv run memops --why-stuck --json <txid>`,  
 - screenshots of expected behavior,  
-- or a dry explanation of the inspection pipeline using prepared artifacts.  
+- or a dry explanation of the workflow using prepared artifacts.  
   
 The fallback should still prove that the project is executable and technically coherent.  
   
@@ -200,13 +241,14 @@ The fallback should still prove that the project is executable and technically c
   
 Avoid these mistakes:  
   
-- do not demo commands that do not exist yet,  
-- do not present `why-stuck` as if it were already implemented,  
+- do not demo commands that do not exist,  
+- do not present `--why-stuck` as a full incident-response suite,  
+- do not claim CPFP planning is implemented,  
+- do not claim export artifacts already exist,  
 - do not turn the walkthrough into a generic explorer tour,  
-- do not spend too much time on infrastructure details,  
-- and do not oversell the current MVP.  
+- and do not oversell the current baseline.  
   
-The strength of the current demo is honesty plus execution.  
+The strength of the demo is honesty plus execution.  
   
 ---  
   
@@ -214,7 +256,7 @@ The strength of the current demo is honesty plus execution.
   
 Recommended ending:  
   
-> “MemOps already shows that transaction inspection can be more rigorous than reading an explorer page. The next step is to turn that inspection baseline into clearer operational diagnosis.”  
+> “MemOps already shows that transaction inspection and initial diagnosis can be more rigorous than reading an explorer page. The next step is to turn this baseline into richer, more auditable operational tooling.”  
   
 ---  
   
@@ -226,5 +268,6 @@ It is the one that clearly proves:
   
 - the repository is executable,  
 - the CLI performs real local inspection,  
+- the why-stuck mode produces structured diagnosis,  
 - the outputs are reviewable,  
 - and the project has a disciplined path forward.

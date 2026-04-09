@@ -1,10 +1,13 @@
 # MemOps  
   
-**Verification-first Bitcoin transaction inspection CLI for mempool-compatible backends**  
+**Verification-first Bitcoin transaction inspection and initial why-stuck diagnosis CLI for mempool-compatible backends**  
   
 MemOps is an open-source Python CLI being built toward verification-first Bitcoin incident response workflows.  
   
-The current executable MVP focuses on one narrow job: fetch a transaction by `txid`, inspect its raw hex locally, and report explicit opt-in RBF signaling in a reviewable way.  
+The current executable baseline now covers two narrow but real jobs:  
+  
+1. fetch a transaction by `txid` and inspect its raw hex locally, and  
+2. provide an initial `why-stuck` diagnosis using normalized backend fee context plus local explicit opt-in RBF analysis.  
   
 ---  
   
@@ -15,8 +18,9 @@ Bitcoin explorers are useful for visibility, but visibility is not the same as o
 When a transaction is stuck, operators need more than a status page. They need a workflow that helps them:  
   
 - inspect the transaction directly,  
-- verify critical details locally when possible,  
+- verify important transaction fields locally when possible,  
 - understand whether the transaction explicitly signals opt-in RBF,  
+- compare the transaction fee position against current backend fee conditions,  
 - and produce outputs that are easy to review or script against.  
   
 MemOps is being built for that purpose.  
@@ -33,7 +37,7 @@ MemOps is being built for that purpose.
   
 ---  
   
-## Current MVP Capabilities  
+## Current Capabilities  
   
 The current executable baseline can:  
   
@@ -42,8 +46,13 @@ The current executable baseline can:
 - parse basic transaction structure locally,  
 - report version, input count, output count, locktime, sequence values, and segwit detection,  
 - detect explicit opt-in RBF signaling from input sequence values,  
+- fetch normalized transaction summary data from the backend,  
+- fetch normalized backend fee recommendations,  
+- build fee-rate context from backend fee and weight data,  
+- classify the transaction relative to current fee recommendation bands,  
+- provide an initial `why-stuck` diagnosis and recommendation,  
 - render a human-readable report,  
-- render a machine-readable JSON payload,  
+- render machine-readable JSON output,  
 - and load runtime settings from environment variables or a local `.env` file.  
   
 ---  
@@ -56,16 +65,29 @@ After syncing the project with `uv`, you can inspect a transaction with:
 uv run memops <txid>  
 ```  
   
-JSON output is also available:  
+JSON inspection output is also available:  
   
 ```bash  
 uv run memops --json <txid>  
+```  
+  
+You can run the initial why-stuck diagnosis with:  
+  
+```bash  
+uv run memops --why-stuck <txid>  
+```  
+  
+And its JSON mode with:  
+  
+```bash  
+uv run memops --why-stuck --json <txid>  
 ```  
   
 The module entrypoint works too:  
   
 ```bash  
 uv run python -m memops <txid>  
+uv run python -m memops --why-stuck <txid>  
 ```  
   
 Help output:  
@@ -74,27 +96,39 @@ Help output:
 uv run memops --help  
 ```  
   
-Typical human-readable output looks like:  
+A typical human-readable `why-stuck` report looks like:  
   
 ```text  
 txid: <txid>  
-version: 2  
-inputs: 1  
-outputs: 2  
-locktime: 0  
-segwit: yes  
+confirmed: no  
+fee_sats: 1200  
+weight_wu: 400  
+virtual_size_vbytes: 100  
+fee_rate_sat_vb: 12.00  
+market_position: below_hour  
+target_fee_rate_sat_vb: 15  
+fee_rate_shortfall_sat_vb: 3.00  
 explicit_rbf: yes  
-signaling_inputs: 0  
+recommended_action: wait  
+severity: warning  
+reason: fee_below_priority_band  
+summary: The transaction is paying below the faster confirmation bands.  
+explanation: ...  
 ```  
   
-The JSON mode includes:  
+The JSON modes are intentionally structured for scripting and review:  
   
-- `txid`  
-- `raw_hex`  
-- `parsed`  
-- `analysis`  
+- inspection JSON includes:  
+  - `txid`  
+  - `raw_hex`  
+  - `parsed`  
+  - `analysis`  
+- why-stuck JSON adds:  
+  - `summary`  
+  - `fee_context`  
+  - `diagnosis`  
   
-This makes the current CLI useful both for direct inspection and for shell scripting.  
+This keeps the current CLI useful both for direct terminal use and for shell-based workflows.  
   
 ---  
   
@@ -120,10 +154,8 @@ Current settings:
   
 - `MEMOPS_BACKEND_URL`    
   Base URL for a mempool-compatible backend.  
-  
 - `MEMOPS_NETWORK`    
   Supported values: `mainnet`, `testnet`, `signet`, `regtest`.  
-  
 - `MEMOPS_EXPORT_DIR`    
   Reserved for upcoming export workflows.  
   
@@ -140,9 +172,10 @@ MemOps is **not**:
 - a block explorer replacement,  
 - a custodial product,  
 - a cloud-only service,  
-- or an officially affiliated mempool.space product.  
+- an officially affiliated mempool.space product,  
+- or a full stuck-transaction rescue automation system.  
   
-The goal is to add a verification-first reasoning layer, not to hide irreversible actions behind a simple interface.  
+The current `why-stuck` mode is an **initial diagnosis layer**, not a complete replacement, CPFP, or incident-response engine.  
   
 ---  
   
@@ -166,9 +199,10 @@ The goal is to add a verification-first reasoning layer, not to hide irreversibl
 Key implementation areas:  
   
 - `src/memops/backends/` — backend contracts and mempool-compatible retrieval  
-- `src/memops/services/` — parsing, analysis, and inspection workflow  
+- `src/memops/diagnostics/` — fee-context classification and why-stuck policy  
+- `src/memops/services/` — inspection and diagnosis workflow orchestration  
 - `src/memops/cli.py` — command-line entrypoint  
-- `tests/` — automated validation of policy, parsing, backend behavior, configuration, and CLI output  
+- `tests/` — automated validation of parsing, policy, backend behavior, diagnosis logic, and CLI output  
   
 ---  
   
@@ -186,7 +220,7 @@ uv sync --python 3.12 --group dev
 Basic checks:  
   
 ```bash  
-uv run ruff format .  
+uv run ruff format .   
 uv run ruff check .  
 uv run pytest -q  
 ```  
@@ -201,27 +235,31 @@ uv run memops --help
   
 ## Project Status  
   
-MemOps now has an executable MVP baseline.  
+MemOps now includes both an executable inspection baseline and an initial why-stuck diagnosis baseline.  
   
-### Delivered baseline  
+### Delivered today  
   
 - settings model with `.env` support  
 - mempool-compatible backend adapter  
 - local raw transaction parsing  
 - explicit RBF detection  
+- transaction summary retrieval  
+- fee recommendation retrieval  
+- fee-context classification  
 - end-to-end inspection workflow  
+- end-to-end why-stuck diagnosis workflow  
 - human-readable CLI output  
 - JSON CLI output  
 - `memops` console script  
   
 ### Next planned capabilities  
   
-The next milestone is to move from **inspection** to **diagnosis**, including work such as:  
+The next milestone after this diagnosis baseline is likely to include work such as:  
   
-- fee-pressure context,  
-- `why-stuck` reasoning,  
 - auditable export artifacts,  
-- and structured RBF planning.  
+- richer fee-pressure context,  
+- structured RBF planning,  
+- and optional cleanup of unused runtime dependencies.  
   
 The project is still intentionally scoped as a focused single-maintainer MVP.  
   
@@ -260,10 +298,4 @@ Key project documents include:
 - `strategy/operating-model.md`  
 - `strategy/business-model.md`  
 - `strategy/roadmap.md`  
-- `strategy/pitch-script.md`  
-  
----  
-  
-## License  
-  
-This project is released under the **MIT License**.
+- `strategy/pitch-script.md`
