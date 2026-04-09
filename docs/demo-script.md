@@ -40,7 +40,8 @@ Today, MemOps can already:
 - classify the transaction fee position relative to current recommendation bands,  
 - provide an initial why-stuck diagnosis,  
 - and render the result in both human-readable and JSON form.  
-  
+- optionally export auditable diagnosis artifacts as JSON and Markdown files.  
+
 That is enough to support a real technical walkthrough.  
   
 ---  
@@ -194,13 +195,34 @@ Suggested speaking line:
   
 > “JSON output matters because incident-response workflows benefit from artifacts that can be reused, inspected, or scripted.”  
   
+---
+  
+## 7. Run the export mode  
+  
+Use the real commands that now exist:  
+  
+```bash  
+uv run memops --why-stuck --export <txid>  
+uv run memops --why-stuck --json --export <txid>  
+```  
+  
+What to highlight:  
+  
+- deterministic export directory layout,  
+- `analysis.json` and `report.md`,  
+- text-mode confirmation of written paths,  
+- and the `artifacts` object in JSON output.  
+  
+Suggested speaking line:  
+  
+> “This matters because incident-response work should leave behind auditable artifacts, not only terminal output.”  
+
 ---  
   
-## 7. Connect the current baseline to the roadmap  
+## 8. Connect the current baseline to the roadmap 
   
 Close the technical walkthrough by explaining what this baseline enables next:  
   
-- auditable export artifacts,  
 - richer fee-pressure context,  
 - structured RBF planning,  
 - and later response workflows.  
@@ -232,7 +254,8 @@ If the live backend fails or the environment becomes unstable, use one or more o
 - a saved JSON output from `uv run memops --why-stuck --json <txid>`,  
 - screenshots of expected behavior,  
 - or a dry explanation of the workflow using prepared artifacts.  
-  
+- a saved export directory containing `analysis.json` and `report.md`,  
+
 The fallback should still prove that the project is executable and technically coherent.  
   
 ---  
@@ -244,7 +267,7 @@ Avoid these mistakes:
 - do not demo commands that do not exist,  
 - do not present `--why-stuck` as a full incident-response suite,  
 - do not claim CPFP planning is implemented,  
-- do not claim export artifacts already exist,  
+- do not present export artifacts as full rescue automation,    
 - do not turn the walkthrough into a generic explorer tour,  
 - and do not oversell the current baseline.  
   

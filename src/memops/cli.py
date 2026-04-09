@@ -37,7 +37,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--export-dir",
-        help="Override the export artifact directory (requires --why-stuck).",
+        metavar="PATH",
+        help="Write why-stuck diagnosis artifacts to PATH (requires --why-stuck).",
     )
     parser.add_argument(
         "--why-stuck",

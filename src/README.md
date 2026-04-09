@@ -50,10 +50,13 @@ Runtime configuration loaded through `pydantic-settings`.
   
 Current responsibilities:  
   
-- load `MEMOPS_*` settings,  
-- support local `.env` files,  
-- normalize backend configuration,  
-- and expose cached settings.  
+- parse command-line arguments,  
+- choose inspection mode or `--why-stuck` mode,  
+- choose text or JSON output,  
+- resolve export destinations for why-stuck diagnosis when requested,  
+- initialize the configured backend,  
+- write diagnosis artifacts when export is enabled,  
+- and surface user-facing errors clearly.    
   
 ### `memops/backends/`  
 Backend contracts and concrete retrieval logic.  
@@ -93,7 +96,9 @@ Current modules:
   End-to-end workflow: fetch, parse, and analyze.  
 - `diagnosis.py`    
   End-to-end workflow: inspect locally, retrieve fee context, and produce a why-stuck diagnosis.  
-  
+- `exports.py`  
+  Rendering helpers and deterministic artifact export workflow for why-stuck diagnosis outputs.  
+
 ### `memops/domain/`  
 Reserved for broader domain models as the project grows.  
   
@@ -124,10 +129,11 @@ The current CLI path is intentionally simple.
 5. the backend fetches `/api/v1/fees/recommended`,  
 6. the service builds fee context from normalized backend data,  
 7. local why-stuck policy produces a diagnosis and recommendation,  
-8. the result is rendered as text or JSON.  
+8. the CLI renders the result as text or JSON,  
+9. and if `--export` or `--export-dir` is used, the CLI writes `analysis.json` and `report.md` to `<base_dir>/<txid>/`.  
   
 This matters because MemOps still does more than print backend responses. It retrieves data externally, but important reasoning remains in local services.  
-  
+
 ---  
   
 ## Technical Principles  
@@ -158,12 +164,13 @@ Implemented today:
 - CLI text output  
 - CLI JSON output  
 - console-script entrypoint  
-  
+- diagnosis artifact export workflow  
+
 Next technical priorities:  
   
-1. auditable export artifacts  
-2. richer fee-pressure context  
-3. structured RBF planning  
+1. richer fee-pressure context  
+2. structured RBF planning  
+3. export failure-path hardening  
 4. optional dependency cleanup  
   
 The codebase is intentionally scoped for a single-maintainer MVP and aims for clarity over unnecessary complexity.
