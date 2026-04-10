@@ -103,7 +103,7 @@ def test_build_transaction_fee_evidence_rejects_inconsistent_weight_and_vsize() 
         )
 
 
-def test_backend_transaction_summary_normalizes_and_derives_virtual_size() -> None:
+def test_backend_transaction_summary_normalizes_and_derives_exact_fee_evidence() -> None:
     summary = BackendTransactionSummary(
         txid=f"  {VALID_TXID.upper()}  ",
         confirmed=True,
@@ -120,6 +120,40 @@ def test_backend_transaction_summary_normalizes_and_derives_virtual_size() -> No
     assert summary.virtual_size_vbytes == 141
     assert summary.block_height == 900000
     assert summary.block_time == 1_700_000_000
+    assert summary.fee_evidence.source is FeeEvidenceSource.BACKEND_SUMMARY
+    assert summary.fee_evidence.completeness is FeeEvidenceCompleteness.EXACT
+    assert summary.fee_evidence.effective_fee_rate_sat_vb == pytest.approx(1.0)
+
+
+def test_backend_transaction_summary_accepts_exact_fee_evidence_from_vsize_without_weight() -> None:
+    summary = BackendTransactionSummary(
+        txid=VALID_TXID,
+        confirmed=False,
+        fee_sats=282,
+        virtual_size_vbytes=141,
+    )
+
+    assert summary.fee_sats == 282
+    assert summary.weight_wu is None
+    assert summary.virtual_size_vbytes == 141
+    assert summary.fee_evidence.completeness is FeeEvidenceCompleteness.EXACT
+    assert summary.fee_evidence.effective_fee_rate_sat_vb == pytest.approx(2.0)
+
+
+def test_backend_transaction_summary_represents_incomplete_fee_evidence_when_fee_is_missing() -> (
+    None
+):
+    summary = BackendTransactionSummary(
+        txid=VALID_TXID,
+        confirmed=False,
+        weight_wu=400,
+    )
+
+    assert summary.fee_sats is None
+    assert summary.weight_wu == 400
+    assert summary.virtual_size_vbytes == 100
+    assert summary.fee_evidence.completeness is FeeEvidenceCompleteness.INCOMPLETE
+    assert summary.fee_evidence.effective_fee_rate_sat_vb is None
 
 
 def test_backend_transaction_summary_clears_block_metadata_for_unconfirmed_transactions() -> None:
@@ -135,6 +169,7 @@ def test_backend_transaction_summary_clears_block_metadata_for_unconfirmed_trans
     assert summary.block_height is None
     assert summary.block_time is None
     assert summary.virtual_size_vbytes == 100
+    assert summary.fee_evidence.completeness is FeeEvidenceCompleteness.EXACT
 
 
 def test_backend_transaction_summary_rejects_negative_fee() -> None:

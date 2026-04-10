@@ -8,6 +8,7 @@ from memops.backends import (
     BackendFeeRecommendations,
     BackendTransaction,
     BackendTransactionSummary,
+    FeeEvidenceCompleteness,
     MempoolSpaceBackend,
     TransactionNotFoundError,
     build_mempool_api_base_url,
@@ -35,8 +36,9 @@ class FakeResponse:
 def make_transaction_summary_body(
     *,
     txid: str = VALID_TXID,
-    fee: int = 280,
-    weight: int = 561,
+    fee: int | None = 280,
+    weight: int | None = 561,
+    vsize: int | None = None,
     confirmed: bool = False,
     block_height: int | None = None,
     block_time: int | None = None,
@@ -47,14 +49,18 @@ def make_transaction_summary_body(
     if block_time is not None:
         status["block_time"] = block_time
 
-    return json.dumps(
-        {
-            "txid": txid,
-            "fee": fee,
-            "weight": weight,
-            "status": status,
-        }
-    )
+    payload: dict[str, object] = {
+        "txid": txid,
+        "status": status,
+    }
+    if fee is not None:
+        payload["fee"] = fee
+    if weight is not None:
+        payload["weight"] = weight
+    if vsize is not None:
+        payload["vsize"] = vsize
+
+    return json.dumps(payload)
 
 
 def make_fee_recommendations_body(
@@ -148,6 +154,7 @@ def test_mempool_space_backend_fetches_transaction_summary_for_unconfirmed_trans
         fee_sats=280,
         weight_wu=561,
     )
+    assert summary.fee_evidence.completeness is FeeEvidenceCompleteness.EXACT
 
 
 def test_mempool_space_backend_fetches_transaction_summary_for_confirmed_transaction() -> None:
@@ -177,6 +184,64 @@ def test_mempool_space_backend_fetches_transaction_summary_for_confirmed_transac
         block_height=840000,
         block_time=1_700_000_000,
     )
+    assert summary.fee_evidence.completeness is FeeEvidenceCompleteness.EXACT
+
+
+def test_mempool_space_backend_fetches_transaction_summary_with_vsize_when_weight_is_missing() -> (
+    None
+):
+    def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
+        return FakeResponse(
+            make_transaction_summary_body(
+                fee=282,
+                weight=None,
+                vsize=141,
+                confirmed=False,
+            )
+        )
+
+    backend = MempoolSpaceBackend(
+        base_url="https://mempool.space",
+        urlopen=fake_urlopen,
+    )
+
+    summary = backend.get_transaction_summary(VALID_TXID)
+
+    assert summary == BackendTransactionSummary(
+        txid=VALID_TXID,
+        confirmed=False,
+        fee_sats=282,
+        virtual_size_vbytes=141,
+    )
+    assert summary.fee_evidence.completeness is FeeEvidenceCompleteness.EXACT
+    assert summary.fee_evidence.effective_fee_rate_sat_vb == pytest.approx(2.0)
+
+
+def test_mempool_space_backend_returns_incomplete_fee_evidence_when_fee_is_missing() -> None:
+    def fake_urlopen(url: str, *, timeout: float) -> FakeResponse:
+        return FakeResponse(
+            make_transaction_summary_body(
+                fee=None,
+                weight=400,
+                confirmed=False,
+            )
+        )
+
+    backend = MempoolSpaceBackend(
+        base_url="https://mempool.space",
+        urlopen=fake_urlopen,
+    )
+
+    summary = backend.get_transaction_summary(VALID_TXID)
+
+    assert summary == BackendTransactionSummary(
+        txid=VALID_TXID,
+        confirmed=False,
+        weight_wu=400,
+    )
+    assert summary.virtual_size_vbytes == 100
+    assert summary.fee_evidence.completeness is FeeEvidenceCompleteness.INCOMPLETE
+    assert summary.fee_evidence.effective_fee_rate_sat_vb is None
 
 
 def test_mempool_space_backend_fetches_fee_recommendations() -> None:
@@ -328,6 +393,7 @@ def test_mempool_space_backend_rejects_invalid_transaction_summary_payload() -> 
             json.dumps(
                 {
                     "txid": VALID_TXID,
+                    "fee": "280",
                     "weight": 400,
                     "status": {"confirmed": False},
                 }
