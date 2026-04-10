@@ -299,11 +299,12 @@ class BackendTransactionSummary:
 
     txid: str
     confirmed: bool
-    fee_sats: int
-    weight_wu: int
+    fee_sats: int | None = None
+    weight_wu: int | None = None
+    virtual_size_vbytes: int | None = None
     block_height: int | None = None
     block_time: int | None = None
-    virtual_size_vbytes: int = field(init=False)
+    fee_evidence: TransactionFeeEvidence = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "txid", normalize_txid(self.txid))
@@ -312,16 +313,20 @@ class BackendTransactionSummary:
             msg = "confirmed must be a boolean"
             raise ValueError(msg)
 
-        normalized_fee = _normalize_non_negative_int(self.fee_sats, field_name="fee_sats")
-        object.__setattr__(self, "fee_sats", normalized_fee)
-
-        normalized_weight = _normalize_positive_int(self.weight_wu, field_name="weight_wu")
-        object.__setattr__(self, "weight_wu", normalized_weight)
+        fee_evidence = build_transaction_fee_evidence(
+            source=FeeEvidenceSource.BACKEND_SUMMARY,
+            fee_sats=self.fee_sats,
+            weight_wu=self.weight_wu,
+            virtual_size_vbytes=self.virtual_size_vbytes,
+        )
+        object.__setattr__(self, "fee_sats", fee_evidence.fee_sats)
+        object.__setattr__(self, "weight_wu", fee_evidence.weight_wu)
         object.__setattr__(
             self,
             "virtual_size_vbytes",
-            _weight_to_virtual_size(normalized_weight),
+            fee_evidence.virtual_size_vbytes,
         )
+        object.__setattr__(self, "fee_evidence", fee_evidence)
 
         if self.confirmed:
             normalized_block_height = _normalize_optional_positive_int(

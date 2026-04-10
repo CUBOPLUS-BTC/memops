@@ -47,8 +47,6 @@ def _parse_transaction_summary_payload(
         raise BackendError(msg)
 
     payload_txid = payload.get("txid")
-    fee_sats = payload.get("fee")
-    weight_wu = payload.get("weight")
     status = payload.get("status")
 
     if not isinstance(payload_txid, str) or not isinstance(status, dict):
@@ -69,8 +67,9 @@ def _parse_transaction_summary_payload(
         return BackendTransactionSummary(
             txid=normalized_payload_txid,
             confirmed=status.get("confirmed"),
-            fee_sats=fee_sats,
-            weight_wu=weight_wu,
+            fee_sats=payload.get("fee"),
+            weight_wu=payload.get("weight"),
+            virtual_size_vbytes=payload.get("vsize"),
             block_height=status.get("block_height"),
             block_time=status.get("block_time"),
         )
