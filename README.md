@@ -7,7 +7,7 @@ MemOps is an open-source Python CLI being built toward verification-first Bitcoi
 The current executable baseline now covers two narrow but real jobs:
 
 1. fetch a transaction by `txid` and inspect its raw hex locally, and
-2. provide an initial `why-stuck` diagnosis using normalized backend fee context plus local explicit opt-in RBF analysis.
+2. provide an initial `why-stuck` diagnosis using normalized backend fee evidence and fee context plus local explicit opt-in RBF analysis.  
 
 ---
 
@@ -44,10 +44,12 @@ MemOps currently provides a thin but real transaction-inspection and diagnosis b
 - inspect raw Bitcoin transaction data through a mempool-compatible backend,
 - parse raw transactions locally,
 - analyze explicit RBF signaling from transaction input sequences,
-- render human-readable or JSON inspection output,
-- run a first-pass why-stuck diagnosis from transaction summary data plus fee recommendations,
-- write auditable diagnosis artifacts to a deterministic export directory layout,
-- surface written artifact paths in both text and JSON why-stuck output,
+- render human-readable or JSON inspection output,  
+- normalize backend fee evidence into exact or incomplete evidence before fee-context classification,  
+- run a first-pass why-stuck diagnosis from normalized fee evidence, fee recommendations, and local explicit RBF analysis,  
+- expose fee evidence metadata in human-readable why-stuck output and under `summary.fee_evidence` in structured diagnosis JSON/export output,  
+- write auditable diagnosis artifacts to a deterministic export directory layout,  
+- surface written artifact paths in both text and JSON why-stuck output,  
 - fail export attempts explicitly with a non-zero CLI result and a user-facing error,
 - and keep non-export inspection flows independent from export configuration.
 
@@ -120,12 +122,14 @@ uv run memops --help
 A typical human-readable `why-stuck` report looks like:
 
 ```text
-txid: <txid>
-confirmed: no
-fee_sats: 1200
-weight_wu: 400
-virtual_size_vbytes: 100
-fee_rate_sat_vb: 12.00
+txid: <txid>  
+confirmed: no  
+fee_sats: 1200  
+weight_wu: 400  
+virtual_size_vbytes: 100  
+fee_evidence_source: backend_summary  
+fee_evidence_completeness: exact  
+fee_rate_sat_vb: 12.00  
 market_position: below_hour
 target_fee_rate_sat_vb: 15
 fee_rate_shortfall_sat_vb: 3.00
@@ -144,14 +148,18 @@ The JSON modes are intentionally structured for scripting and review:
   - `raw_hex`
   - `parsed`
   - `analysis`
-- why-stuck JSON adds:
-  - `summary`
-  - `fee_context`
-  - `diagnosis`
-- why-stuck JSON with export also adds:
-  - `artifacts`
-
-This keeps the current CLI useful both for direct terminal use and for shell-based workflows.
+- why-stuck JSON adds:  
+  - `summary`  
+    - including `summary.fee_evidence` with `source`, `completeness`, and normalized fee/size fields  
+  - `fee_context`  
+  - `diagnosis`  
+- why-stuck JSON with export also adds:  
+  - `artifacts`  
+  
+The exported `analysis.json` artifact uses the same structured diagnosis payload, so  
+`summary.fee_evidence` is available there too.  
+  
+This keeps the current CLI useful both for direct terminal use and for shell-based workflows.  
 
 ---
 
