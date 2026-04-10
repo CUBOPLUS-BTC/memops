@@ -15,6 +15,7 @@ from memops.services import (
     diagnose_why_stuck,
     inspect_transaction,
 )
+from memops.services.diagnosis_payloads import build_diagnosed_transaction_payload
 from memops.services.exports import DiagnosisArtifactPaths, export_diagnosis_artifacts
 
 
@@ -119,57 +120,7 @@ def diagnosis_to_dict(
     artifact_paths: DiagnosisArtifactPaths | None = None,
 ) -> dict[str, Any]:
     """Convert a diagnosed transaction into a JSON-serializable payload."""
-    inspection_payload = inspection_to_dict(diagnosed.inspection)
-    recommended_fees = diagnosed.fee_context.recommended_fees
-
-    payload: dict[str, Any] = {
-        "txid": diagnosed.inspection.txid,
-        "raw_hex": diagnosed.inspection.raw_hex,
-        "parsed": inspection_payload["parsed"],
-        "analysis": inspection_payload["analysis"],
-        "summary": {
-            "txid": diagnosed.summary.txid,
-            "confirmed": diagnosed.summary.confirmed,
-            "fee_sats": diagnosed.summary.fee_sats,
-            "weight_wu": diagnosed.summary.weight_wu,
-            "virtual_size_vbytes": diagnosed.summary.virtual_size_vbytes,
-            "block_height": diagnosed.summary.block_height,
-            "block_time": diagnosed.summary.block_time,
-        },
-        "fee_context": {
-            "txid": diagnosed.fee_context.txid,
-            "confirmed": diagnosed.fee_context.confirmed,
-            "fee_sats": diagnosed.fee_context.fee_sats,
-            "weight_wu": diagnosed.fee_context.weight_wu,
-            "virtual_size_vbytes": diagnosed.fee_context.virtual_size_vbytes,
-            "fee_rate_sat_vb": diagnosed.fee_context.fee_rate_sat_vb,
-            "market_position": diagnosed.fee_context.market_position.value,
-            "target_fee_rate_sat_vb": diagnosed.fee_context.target_fee_rate_sat_vb,
-            "fee_rate_shortfall_sat_vb": diagnosed.fee_context.fee_rate_shortfall_sat_vb,
-            "recommended_fees": {
-                "fastest_fee_sat_vb": recommended_fees.fastest_fee_sat_vb,
-                "half_hour_fee_sat_vb": recommended_fees.half_hour_fee_sat_vb,
-                "hour_fee_sat_vb": recommended_fees.hour_fee_sat_vb,
-                "economy_fee_sat_vb": recommended_fees.economy_fee_sat_vb,
-                "minimum_fee_sat_vb": recommended_fees.minimum_fee_sat_vb,
-            },
-        },
-        "diagnosis": {
-            "txid": diagnosed.diagnosis.txid,
-            "confirmed": diagnosed.diagnosis.confirmed,
-            "reason": diagnosed.diagnosis.reason.value,
-            "severity": diagnosed.diagnosis.severity.value,
-            "recommended_action": diagnosed.diagnosis.recommended_action.value,
-            "explicitly_signals_rbf": diagnosed.diagnosis.explicitly_signals_rbf,
-            "can_bump_fee": diagnosed.diagnosis.can_bump_fee,
-            "market_position": diagnosed.diagnosis.market_position.value,
-            "fee_rate_sat_vb": diagnosed.diagnosis.fee_rate_sat_vb,
-            "target_fee_rate_sat_vb": diagnosed.diagnosis.target_fee_rate_sat_vb,
-            "fee_rate_shortfall_sat_vb": diagnosed.diagnosis.fee_rate_shortfall_sat_vb,
-            "summary": diagnosed.diagnosis.summary,
-            "explanation": diagnosed.diagnosis.explanation,
-        },
-    }
+    payload = build_diagnosed_transaction_payload(diagnosed)
 
     if artifact_paths is not None:
         payload["artifacts"] = artifact_paths_to_dict(artifact_paths)
