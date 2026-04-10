@@ -181,6 +181,7 @@ def format_why_stuck_report(
     summary = diagnosed.summary
     fee_context = diagnosed.fee_context
     diagnosis = diagnosed.diagnosis
+    fee_evidence = summary.fee_evidence
 
     lines = [
         f"txid: {diagnosed.inspection.txid}",
@@ -188,6 +189,8 @@ def format_why_stuck_report(
         f"fee_sats: {summary.fee_sats}",
         f"weight_wu: {summary.weight_wu}",
         f"virtual_size_vbytes: {summary.virtual_size_vbytes}",
+        f"fee_evidence_source: {fee_evidence.source.value}",
+        f"fee_evidence_completeness: {fee_evidence.completeness.value}",
         f"fee_rate_sat_vb: {fee_context.fee_rate_sat_vb:.2f}",
         f"market_position: {fee_context.market_position.value}",
         (f"target_fee_rate_sat_vb: {_format_optional_int(fee_context.target_fee_rate_sat_vb)}"),

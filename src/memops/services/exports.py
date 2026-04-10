@@ -50,6 +50,7 @@ def render_diagnosis_markdown(diagnosed: DiagnosedTransaction) -> str:
     fee_context = diagnosed.fee_context
     diagnosis = diagnosed.diagnosis
     recommended_fees = fee_context.recommended_fees
+    fee_evidence = summary.fee_evidence
 
     signaling_inputs = (
         ", ".join(str(index) for index in inspection.analysis.signaling_input_indexes)
@@ -66,6 +67,8 @@ def render_diagnosis_markdown(diagnosed: DiagnosedTransaction) -> str:
         f"- fee_sats: {summary.fee_sats}",
         f"- weight_wu: {summary.weight_wu}",
         f"- virtual_size_vbytes: {summary.virtual_size_vbytes}",
+        f"- fee_evidence_source: {fee_evidence.source.value}",
+        f"- fee_evidence_completeness: {fee_evidence.completeness.value}",
         f"- block_height: {_format_optional_int(summary.block_height)}",
         f"- block_time: {_format_optional_int(summary.block_time)}",
         f"- fee_rate_sat_vb: {fee_context.fee_rate_sat_vb:.2f}",
@@ -108,6 +111,7 @@ def render_diagnosis_markdown(diagnosed: DiagnosedTransaction) -> str:
         diagnosis.explanation,
         "",
     ]
+
     return "\n".join(lines)
 
 
