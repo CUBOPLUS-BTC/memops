@@ -4,6 +4,10 @@ from memops.backends import (
     BackendFeeRecommendations,
     BackendTransaction,
     BackendTransactionSummary,
+    FeeEvidenceCompleteness,
+    FeeEvidenceSource,
+    TransactionFeeEvidence,
+    build_transaction_fee_evidence,
     normalize_raw_hex,
     normalize_txid,
 )
@@ -42,6 +46,61 @@ def test_backend_transaction_normalizes_fields() -> None:
     )
     assert transaction.txid == VALID_TXID
     assert transaction.raw_hex == "aabb"
+
+
+def test_transaction_fee_evidence_derives_exact_fee_rate_from_fee_and_weight() -> None:
+    evidence = TransactionFeeEvidence(
+        source=FeeEvidenceSource.BACKEND_SUMMARY,
+        completeness=FeeEvidenceCompleteness.EXACT,
+        fee_sats=280,
+        weight_wu=561,
+    )
+    assert evidence.fee_sats == 280
+    assert evidence.weight_wu == 561
+    assert evidence.virtual_size_vbytes == 141
+    assert evidence.effective_fee_rate_sat_vb == pytest.approx(280 / 141)
+
+
+def test_build_transaction_fee_evidence_returns_exact_evidence_from_fee_and_vsize() -> None:
+    evidence = build_transaction_fee_evidence(
+        fee_sats=400,
+        virtual_size_vbytes=100,
+    )
+    assert evidence.source is FeeEvidenceSource.BACKEND_SUMMARY
+    assert evidence.completeness is FeeEvidenceCompleteness.EXACT
+    assert evidence.fee_sats == 400
+    assert evidence.weight_wu is None
+    assert evidence.virtual_size_vbytes == 100
+    assert evidence.effective_fee_rate_sat_vb == pytest.approx(4.0)
+
+
+def test_build_transaction_fee_evidence_returns_incomplete_evidence_without_size_data() -> None:
+    evidence = build_transaction_fee_evidence(fee_sats=400)
+    assert evidence.completeness is FeeEvidenceCompleteness.INCOMPLETE
+    assert evidence.fee_sats == 400
+    assert evidence.weight_wu is None
+    assert evidence.virtual_size_vbytes is None
+    assert evidence.effective_fee_rate_sat_vb is None
+
+
+def test_build_transaction_fee_evidence_returns_fallback_evidence_when_rate_is_provided() -> None:
+    evidence = build_transaction_fee_evidence(
+        weight_wu=561,
+        fallback_fee_rate_sat_vb=12.5,
+    )
+    assert evidence.completeness is FeeEvidenceCompleteness.FALLBACK
+    assert evidence.weight_wu == 561
+    assert evidence.virtual_size_vbytes == 141
+    assert evidence.effective_fee_rate_sat_vb == pytest.approx(12.5)
+
+
+def test_build_transaction_fee_evidence_rejects_inconsistent_weight_and_vsize() -> None:
+    with pytest.raises(ValueError, match="virtual_size_vbytes must match weight_wu"):
+        build_transaction_fee_evidence(
+            fee_sats=280,
+            weight_wu=561,
+            virtual_size_vbytes=140,
+        )
 
 
 def test_backend_transaction_summary_normalizes_and_derives_virtual_size() -> None:

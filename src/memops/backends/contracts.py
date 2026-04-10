@@ -1,6 +1,8 @@
 """Backend contracts and value objects for MemOps data retrieval."""
 
 from dataclasses import dataclass, field
+from enum import StrEnum
+from math import isclose, isfinite
 from typing import Protocol
 
 _HEX_DIGITS = frozenset("0123456789abcdef")
@@ -33,6 +35,7 @@ def normalize_raw_hex(raw_hex: str) -> str:
     if normalized.startswith("0x"):
         normalized = normalized[2:]
     normalized = "".join(normalized.split())
+
     if not normalized:
         msg = "raw_hex must not be empty"
         raise ValueError(msg)
@@ -55,6 +58,17 @@ def _normalize_non_negative_int(value: int, *, field_name: str) -> int:
     return value
 
 
+def _normalize_optional_non_negative_int(
+    value: int | None,
+    *,
+    field_name: str,
+) -> int | None:
+    """Validate that an optional value is either None or a non-negative integer."""
+    if value is None:
+        return None
+    return _normalize_non_negative_int(value, field_name=field_name)
+
+
 def _normalize_positive_int(value: int, *, field_name: str) -> int:
     """Validate that a value is a positive integer."""
     normalized = _normalize_non_negative_int(value, field_name=field_name)
@@ -71,9 +85,200 @@ def _normalize_optional_positive_int(value: int | None, *, field_name: str) -> i
     return _normalize_positive_int(value, field_name=field_name)
 
 
+def _normalize_fee_rate(value: float, *, field_name: str) -> float:
+    """Validate that a fee rate is a finite non-negative real number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        msg = f"{field_name} must be a real number"
+        raise ValueError(msg)
+
+    normalized = float(value)
+    if not isfinite(normalized):
+        msg = f"{field_name} must be finite"
+        raise ValueError(msg)
+    if normalized < 0:
+        msg = f"{field_name} must be non-negative"
+        raise ValueError(msg)
+    return normalized
+
+
+def _normalize_optional_fee_rate(value: float | None, *, field_name: str) -> float | None:
+    """Validate that an optional value is either None or a valid fee rate."""
+    if value is None:
+        return None
+    return _normalize_fee_rate(value, field_name=field_name)
+
+
 def _weight_to_virtual_size(weight_wu: int) -> int:
     """Convert transaction weight units to virtual size."""
     return (weight_wu + 3) // 4
+
+
+class FeeEvidenceSource(StrEnum):
+    """Normalized source for transaction fee evidence."""
+
+    BACKEND_SUMMARY = "backend_summary"
+
+
+class FeeEvidenceCompleteness(StrEnum):
+    """Completeness of normalized transaction fee evidence."""
+
+    EXACT = "exact"
+    INCOMPLETE = "incomplete"
+    FALLBACK = "fallback"
+
+
+@dataclass(frozen=True, slots=True)
+class TransactionFeeEvidence:
+    """Normalized fee evidence derived from backend-provided transaction fields."""
+
+    source: FeeEvidenceSource
+    completeness: FeeEvidenceCompleteness
+    fee_sats: int | None = None
+    weight_wu: int | None = None
+    virtual_size_vbytes: int | None = None
+    effective_fee_rate_sat_vb: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source, FeeEvidenceSource):
+            msg = "source must be a FeeEvidenceSource"
+            raise ValueError(msg)
+        if not isinstance(self.completeness, FeeEvidenceCompleteness):
+            msg = "completeness must be a FeeEvidenceCompleteness"
+            raise ValueError(msg)
+
+        normalized_fee_sats = _normalize_optional_non_negative_int(
+            self.fee_sats,
+            field_name="fee_sats",
+        )
+        normalized_weight = _normalize_optional_positive_int(
+            self.weight_wu,
+            field_name="weight_wu",
+        )
+        normalized_vsize = _normalize_optional_positive_int(
+            self.virtual_size_vbytes,
+            field_name="virtual_size_vbytes",
+        )
+        normalized_effective_fee_rate = _normalize_optional_fee_rate(
+            self.effective_fee_rate_sat_vb,
+            field_name="effective_fee_rate_sat_vb",
+        )
+
+        if normalized_weight is not None and normalized_vsize is None:
+            normalized_vsize = _weight_to_virtual_size(normalized_weight)
+
+        if normalized_weight is not None and normalized_vsize is not None:
+            expected_vsize = _weight_to_virtual_size(normalized_weight)
+            if normalized_vsize != expected_vsize:
+                msg = "virtual_size_vbytes must match weight_wu"
+                raise ValueError(msg)
+
+        if self.completeness is FeeEvidenceCompleteness.EXACT:
+            if normalized_fee_sats is None:
+                msg = "exact fee evidence requires fee_sats"
+                raise ValueError(msg)
+            if normalized_vsize is None:
+                msg = "exact fee evidence requires virtual_size_vbytes"
+                raise ValueError(msg)
+
+            expected_effective_fee_rate = normalized_fee_sats / normalized_vsize
+            if normalized_effective_fee_rate is None:
+                normalized_effective_fee_rate = expected_effective_fee_rate
+            elif not isclose(
+                normalized_effective_fee_rate,
+                expected_effective_fee_rate,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            ):
+                msg = "effective_fee_rate_sat_vb must match fee_sats and virtual_size_vbytes"
+                raise ValueError(msg)
+
+        if (
+            self.completeness is FeeEvidenceCompleteness.INCOMPLETE
+            and normalized_effective_fee_rate is not None
+        ):
+            msg = "incomplete fee evidence cannot define effective_fee_rate_sat_vb"
+            raise ValueError(msg)
+
+        if (
+            self.completeness is FeeEvidenceCompleteness.FALLBACK
+            and normalized_effective_fee_rate is None
+        ):
+            msg = "fallback fee evidence requires effective_fee_rate_sat_vb"
+            raise ValueError(msg)
+
+        object.__setattr__(self, "fee_sats", normalized_fee_sats)
+        object.__setattr__(self, "weight_wu", normalized_weight)
+        object.__setattr__(self, "virtual_size_vbytes", normalized_vsize)
+        object.__setattr__(
+            self,
+            "effective_fee_rate_sat_vb",
+            normalized_effective_fee_rate,
+        )
+
+
+def build_transaction_fee_evidence(
+    *,
+    source: FeeEvidenceSource = FeeEvidenceSource.BACKEND_SUMMARY,
+    fee_sats: int | None = None,
+    weight_wu: int | None = None,
+    virtual_size_vbytes: int | None = None,
+    fallback_fee_rate_sat_vb: float | None = None,
+) -> TransactionFeeEvidence:
+    """Build normalized fee evidence from backend-provided transaction fields."""
+    normalized_fee_sats = _normalize_optional_non_negative_int(
+        fee_sats,
+        field_name="fee_sats",
+    )
+    normalized_weight = _normalize_optional_positive_int(
+        weight_wu,
+        field_name="weight_wu",
+    )
+    normalized_vsize = _normalize_optional_positive_int(
+        virtual_size_vbytes,
+        field_name="virtual_size_vbytes",
+    )
+    normalized_fallback_fee_rate = _normalize_optional_fee_rate(
+        fallback_fee_rate_sat_vb,
+        field_name="fallback_fee_rate_sat_vb",
+    )
+
+    if normalized_weight is not None and normalized_vsize is None:
+        normalized_vsize = _weight_to_virtual_size(normalized_weight)
+
+    if normalized_weight is not None and normalized_vsize is not None:
+        expected_vsize = _weight_to_virtual_size(normalized_weight)
+        if normalized_vsize != expected_vsize:
+            msg = "virtual_size_vbytes must match weight_wu"
+            raise ValueError(msg)
+
+    if normalized_fee_sats is not None and normalized_vsize is not None:
+        return TransactionFeeEvidence(
+            source=source,
+            completeness=FeeEvidenceCompleteness.EXACT,
+            fee_sats=normalized_fee_sats,
+            weight_wu=normalized_weight,
+            virtual_size_vbytes=normalized_vsize,
+            effective_fee_rate_sat_vb=normalized_fee_sats / normalized_vsize,
+        )
+
+    if normalized_fallback_fee_rate is not None:
+        return TransactionFeeEvidence(
+            source=source,
+            completeness=FeeEvidenceCompleteness.FALLBACK,
+            fee_sats=normalized_fee_sats,
+            weight_wu=normalized_weight,
+            virtual_size_vbytes=normalized_vsize,
+            effective_fee_rate_sat_vb=normalized_fallback_fee_rate,
+        )
+
+    return TransactionFeeEvidence(
+        source=source,
+        completeness=FeeEvidenceCompleteness.INCOMPLETE,
+        fee_sats=normalized_fee_sats,
+        weight_wu=normalized_weight,
+        virtual_size_vbytes=normalized_vsize,
+        effective_fee_rate_sat_vb=None,
+    )
 
 
 @dataclass(frozen=True, slots=True)
