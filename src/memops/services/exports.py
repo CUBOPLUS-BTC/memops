@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from memops.services.diagnosis import DiagnosedTransaction
+from memops.services.diagnosis_payloads import build_diagnosed_transaction_payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,70 +31,7 @@ def _format_optional_float(value: float | None) -> str:
 
 def diagnosis_to_export_payload(diagnosed: DiagnosedTransaction) -> dict[str, Any]:
     """Convert a diagnosed transaction into a JSON-serializable export payload."""
-    inspection = diagnosed.inspection
-    summary = diagnosed.summary
-    fee_context = diagnosed.fee_context
-    diagnosis = diagnosed.diagnosis
-    recommended_fees = fee_context.recommended_fees
-
-    return {
-        "txid": inspection.txid,
-        "raw_hex": inspection.raw_hex,
-        "parsed": {
-            "version": inspection.parsed.version,
-            "input_count": inspection.parsed.input_count,
-            "output_count": inspection.parsed.output_count,
-            "locktime": inspection.parsed.locktime,
-            "sequences": list(inspection.parsed.sequences),
-            "is_segwit": inspection.parsed.is_segwit,
-        },
-        "analysis": {
-            "signals_explicit_rbf": inspection.analysis.signals_explicit_rbf,
-            "signaling_input_indexes": list(inspection.analysis.signaling_input_indexes),
-        },
-        "summary": {
-            "txid": summary.txid,
-            "confirmed": summary.confirmed,
-            "fee_sats": summary.fee_sats,
-            "weight_wu": summary.weight_wu,
-            "virtual_size_vbytes": summary.virtual_size_vbytes,
-            "block_height": summary.block_height,
-            "block_time": summary.block_time,
-        },
-        "fee_context": {
-            "txid": fee_context.txid,
-            "confirmed": fee_context.confirmed,
-            "fee_sats": fee_context.fee_sats,
-            "weight_wu": fee_context.weight_wu,
-            "virtual_size_vbytes": fee_context.virtual_size_vbytes,
-            "fee_rate_sat_vb": fee_context.fee_rate_sat_vb,
-            "market_position": fee_context.market_position.value,
-            "target_fee_rate_sat_vb": fee_context.target_fee_rate_sat_vb,
-            "fee_rate_shortfall_sat_vb": fee_context.fee_rate_shortfall_sat_vb,
-            "recommended_fees": {
-                "fastest_fee_sat_vb": recommended_fees.fastest_fee_sat_vb,
-                "half_hour_fee_sat_vb": recommended_fees.half_hour_fee_sat_vb,
-                "hour_fee_sat_vb": recommended_fees.hour_fee_sat_vb,
-                "economy_fee_sat_vb": recommended_fees.economy_fee_sat_vb,
-                "minimum_fee_sat_vb": recommended_fees.minimum_fee_sat_vb,
-            },
-        },
-        "diagnosis": {
-            "txid": diagnosis.txid,
-            "confirmed": diagnosis.confirmed,
-            "reason": diagnosis.reason.value,
-            "severity": diagnosis.severity.value,
-            "recommended_action": diagnosis.recommended_action.value,
-            "explicitly_signals_rbf": diagnosis.explicitly_signals_rbf,
-            "can_bump_fee": diagnosis.can_bump_fee,
-            "market_position": diagnosis.market_position.value,
-            "fee_rate_sat_vb": diagnosis.fee_rate_sat_vb,
-            "target_fee_rate_sat_vb": diagnosis.target_fee_rate_sat_vb,
-            "fee_rate_shortfall_sat_vb": diagnosis.fee_rate_shortfall_sat_vb,
-            "summary": diagnosis.summary,
-            "explanation": diagnosis.explanation,
-        },
-    }
+    return build_diagnosed_transaction_payload(diagnosed)
 
 
 def format_export_payload_json(diagnosed: DiagnosedTransaction) -> str:
