@@ -158,6 +158,7 @@ def test_build_transaction_fee_context_for_low_fee_unconfirmed_transaction() -> 
     assert context.market_position is FeeMarketPosition.BELOW_MINIMUM
     assert context.target_fee_rate_sat_vb == 5
     assert context.fee_rate_shortfall_sat_vb == pytest.approx(5 - (280 / 141))
+    assert context.fee_evidence == summary.fee_evidence
     assert context.recommended_fees == RECOMMENDATIONS
 
 
@@ -175,6 +176,7 @@ def test_build_transaction_fee_context_for_confirmed_transaction() -> None:
     assert context.market_position is FeeMarketPosition.CONFIRMED
     assert context.target_fee_rate_sat_vb is None
     assert context.fee_rate_shortfall_sat_vb is None
+    assert context.fee_evidence == summary.fee_evidence
 
 
 def test_build_transaction_fee_context_for_transaction_at_or_above_fastest_band() -> None:
@@ -186,8 +188,41 @@ def test_build_transaction_fee_context_for_transaction_at_or_above_fastest_band(
 
     context = build_transaction_fee_context(summary, RECOMMENDATIONS)
 
+    assert context.weight_wu == 400
     assert context.virtual_size_vbytes == 100
     assert context.fee_rate_sat_vb == pytest.approx(26.0)
     assert context.market_position is FeeMarketPosition.AT_OR_ABOVE_FASTEST
     assert context.target_fee_rate_sat_vb is None
     assert context.fee_rate_shortfall_sat_vb is None
+    assert context.fee_evidence == summary.fee_evidence
+
+
+def test_build_transaction_fee_context_supports_exact_evidence_without_weight() -> None:
+    summary = BackendTransactionSummary(
+        txid=VALID_TXID,
+        confirmed=False,
+        fee_sats=282,
+        virtual_size_vbytes=141,
+    )
+
+    context = build_transaction_fee_context(summary, RECOMMENDATIONS)
+
+    assert context.fee_sats == 282
+    assert context.weight_wu is None
+    assert context.virtual_size_vbytes == 141
+    assert context.fee_rate_sat_vb == pytest.approx(2.0)
+    assert context.market_position is FeeMarketPosition.BELOW_MINIMUM
+    assert context.target_fee_rate_sat_vb == 5
+    assert context.fee_rate_shortfall_sat_vb == pytest.approx(3.0)
+    assert context.fee_evidence == summary.fee_evidence
+
+
+def test_build_transaction_fee_context_rejects_incomplete_fee_evidence() -> None:
+    summary = BackendTransactionSummary(
+        txid=VALID_TXID,
+        confirmed=False,
+        weight_wu=400,
+    )
+
+    with pytest.raises(ValueError, match="requires exact fee evidence"):
+        build_transaction_fee_context(summary, RECOMMENDATIONS)

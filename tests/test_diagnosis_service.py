@@ -12,7 +12,6 @@ from memops.services import DiagnosedTransaction, diagnose_why_stuck
 
 VALID_TXID = "ab" * 32
 OTHER_TXID = "cd" * 32
-
 RECOMMENDATIONS = BackendFeeRecommendations(
     fastest_fee_sat_vb=25,
     half_hour_fee_sat_vb=20,
@@ -20,7 +19,6 @@ RECOMMENDATIONS = BackendFeeRecommendations(
     economy_fee_sat_vb=10,
     minimum_fee_sat_vb=5,
 )
-
 NON_SEGWIT_RBF_HEX = "".join(
     [
         "01000000",
@@ -35,7 +33,6 @@ NON_SEGWIT_RBF_HEX = "".join(
         "00000000",
     ]
 )
-
 SEGWIT_FINAL_HEX = "".join(
     [
         "02000000",
@@ -155,6 +152,27 @@ def test_diagnose_why_stuck_uses_local_rbf_analysis_for_final_transaction() -> N
     assert diagnosed.diagnosis.can_bump_fee is False
 
 
+def test_diagnose_why_stuck_supports_exact_fee_evidence_without_weight() -> None:
+    backend = StubDiagnosisBackend(
+        transaction=BackendTransaction(txid=VALID_TXID, raw_hex=NON_SEGWIT_RBF_HEX),
+        summary=BackendTransactionSummary(
+            txid=VALID_TXID,
+            confirmed=False,
+            fee_sats=282,
+            virtual_size_vbytes=141,
+        ),
+    )
+
+    diagnosed = diagnose_why_stuck(VALID_TXID, backend)
+
+    assert diagnosed.inspection.analysis.signals_explicit_rbf is True
+    assert diagnosed.fee_context.weight_wu is None
+    assert diagnosed.fee_context.virtual_size_vbytes == 141
+    assert diagnosed.fee_context.fee_rate_sat_vb == pytest.approx(2.0)
+    assert diagnosed.diagnosis.reason is WhyStuckReason.LOW_FEE
+    assert diagnosed.diagnosis.recommended_action is WhyStuckAction.BUMP_FEE_RBF
+
+
 def test_diagnose_why_stuck_returns_confirmed_diagnosis_for_confirmed_transaction() -> None:
     backend = StubDiagnosisBackend(
         transaction=BackendTransaction(txid=VALID_TXID, raw_hex=NON_SEGWIT_RBF_HEX),
@@ -193,6 +211,20 @@ def test_diagnose_why_stuck_rejects_mismatched_summary_txid() -> None:
         ValueError,
         match="backend transaction summary txid does not match inspected transaction",
     ):
+        diagnose_why_stuck(VALID_TXID, backend)
+
+
+def test_diagnose_why_stuck_rejects_incomplete_fee_evidence() -> None:
+    backend = StubDiagnosisBackend(
+        transaction=BackendTransaction(txid=VALID_TXID, raw_hex=NON_SEGWIT_RBF_HEX),
+        summary=BackendTransactionSummary(
+            txid=VALID_TXID,
+            confirmed=False,
+            weight_wu=400,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="requires exact fee evidence"):
         diagnose_why_stuck(VALID_TXID, backend)
 
 
