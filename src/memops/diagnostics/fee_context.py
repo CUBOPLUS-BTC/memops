@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from math import isfinite
 
-from memops.backends import BackendFeeRecommendations, BackendTransactionSummary
+from memops.backends import (
+    BackendFeeRecommendations,
+    BackendTransactionSummary,
+    FeeEvidenceCompleteness,
+    TransactionFeeEvidence,
+)
 
 
 class FeeMarketPosition(StrEnum):
@@ -26,12 +31,13 @@ class TransactionFeeContext:
     txid: str
     confirmed: bool
     fee_sats: int
-    weight_wu: int
+    weight_wu: int | None
     virtual_size_vbytes: int
     fee_rate_sat_vb: float
     market_position: FeeMarketPosition
     target_fee_rate_sat_vb: int | None
     fee_rate_shortfall_sat_vb: float | None
+    fee_evidence: TransactionFeeEvidence
     recommended_fees: BackendFeeRecommendations
 
 
@@ -71,6 +77,30 @@ def _normalize_fee_rate(value: float) -> float:
     return normalized
 
 
+def _require_exact_fee_evidence(summary: BackendTransactionSummary) -> TransactionFeeEvidence:
+    """Return exact fee evidence or fail explicitly when it is incomplete."""
+    fee_evidence = summary.fee_evidence
+
+    if fee_evidence.completeness is not FeeEvidenceCompleteness.EXACT:
+        msg = (
+            "transaction fee context requires exact fee evidence; "
+            f"got {fee_evidence.completeness.value}"
+        )
+        raise ValueError(msg)
+
+    if fee_evidence.fee_sats is None:
+        msg = "exact fee evidence must define fee_sats"
+        raise ValueError(msg)
+    if fee_evidence.virtual_size_vbytes is None:
+        msg = "exact fee evidence must define virtual_size_vbytes"
+        raise ValueError(msg)
+    if fee_evidence.effective_fee_rate_sat_vb is None:
+        msg = "exact fee evidence must define effective_fee_rate_sat_vb"
+        raise ValueError(msg)
+
+    return fee_evidence
+
+
 def calculate_fee_rate_sat_vb(fee_sats: int, virtual_size_vbytes: int) -> float:
     """Calculate fee rate in sat/vB from fee and virtual size."""
     normalized_fee = _normalize_non_negative_int(fee_sats, field_name="fee_sats")
@@ -91,7 +121,6 @@ def classify_fee_market_position(
     if not isinstance(confirmed, bool):
         msg = "confirmed must be a boolean"
         raise ValueError(msg)
-
     if confirmed:
         return FeeMarketPosition.CONFIRMED
 
@@ -139,13 +168,22 @@ def build_transaction_fee_context(
     summary: BackendTransactionSummary,
     recommendations: BackendFeeRecommendations,
 ) -> TransactionFeeContext:
-    """Build normalized fee context from transaction summary and fee bands."""
-    fee_rate_sat_vb = calculate_fee_rate_sat_vb(
-        summary.fee_sats,
-        summary.virtual_size_vbytes,
-    )
+    """Build normalized fee context from transaction summary and fee evidence."""
+    fee_evidence = _require_exact_fee_evidence(summary)
+
+    exact_fee_sats = fee_evidence.fee_sats
+    exact_virtual_size_vbytes = fee_evidence.virtual_size_vbytes
+    exact_fee_rate_sat_vb = fee_evidence.effective_fee_rate_sat_vb
+
+    if exact_fee_sats is None or exact_virtual_size_vbytes is None or exact_fee_rate_sat_vb is None:
+        msg = (
+            "exact fee evidence must define fee_sats, "
+            "virtual_size_vbytes, and effective_fee_rate_sat_vb"
+        )
+        raise ValueError(msg)
+
     market_position = classify_fee_market_position(
-        fee_rate_sat_vb,
+        exact_fee_rate_sat_vb,
         recommendations,
         confirmed=summary.confirmed,
     )
@@ -156,18 +194,19 @@ def build_transaction_fee_context(
     fee_rate_shortfall_sat_vb = (
         None
         if target_fee_rate_sat_vb is None
-        else max(target_fee_rate_sat_vb - fee_rate_sat_vb, 0.0)
+        else max(target_fee_rate_sat_vb - exact_fee_rate_sat_vb, 0.0)
     )
 
     return TransactionFeeContext(
         txid=summary.txid,
         confirmed=summary.confirmed,
-        fee_sats=summary.fee_sats,
-        weight_wu=summary.weight_wu,
-        virtual_size_vbytes=summary.virtual_size_vbytes,
-        fee_rate_sat_vb=fee_rate_sat_vb,
+        fee_sats=exact_fee_sats,
+        weight_wu=fee_evidence.weight_wu,
+        virtual_size_vbytes=exact_virtual_size_vbytes,
+        fee_rate_sat_vb=exact_fee_rate_sat_vb,
         market_position=market_position,
         target_fee_rate_sat_vb=target_fee_rate_sat_vb,
         fee_rate_shortfall_sat_vb=fee_rate_shortfall_sat_vb,
+        fee_evidence=fee_evidence,
         recommended_fees=recommendations,
     )
