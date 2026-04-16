@@ -25,6 +25,7 @@ class WhyStuckReason(StrEnum):
     """Normalized reason categories for why-stuck diagnosis."""
 
     CONFIRMED = "confirmed"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     LOW_FEE = "low_fee"
     FEE_BELOW_PRIORITY_BAND = "fee_below_priority_band"
     COMPETITIVE_FEE = "competitive_fee"
@@ -126,11 +127,101 @@ def _require_target_fee_rate_sat_vb(context: TransactionFeeContext) -> int:
     return target_fee_rate_sat_vb
 
 
-def _build_rbf_constraints(*, explicitly_signals_rbf: bool) -> tuple[WhyStuckConstraint, ...]:
-    """Return structured next-step constraints related to explicit RBF signaling."""
-    if explicitly_signals_rbf:
-        return ()
-    return (WhyStuckConstraint.EXPLICIT_RBF_NOT_SIGNALED,)
+def _build_constraints(
+    *,
+    explicitly_signals_rbf: bool,
+    fee_evidence_incomplete: bool = False,
+) -> tuple[WhyStuckConstraint, ...]:
+    """Return structured diagnosis constraints."""
+    constraints: list[WhyStuckConstraint] = []
+
+    if fee_evidence_incomplete:
+        constraints.append(WhyStuckConstraint.FEE_EVIDENCE_INCOMPLETE)
+    if not explicitly_signals_rbf:
+        constraints.append(WhyStuckConstraint.EXPLICIT_RBF_NOT_SIGNALED)
+
+    return tuple(constraints)
+
+
+def build_confirmed_why_stuck_diagnosis(
+    *,
+    txid: str,
+    explicitly_signals_rbf: bool,
+) -> WhyStuckDiagnosis:
+    """Build a confirmed diagnosis without requiring fee-context derivation."""
+    normalized_explicitly_signals_rbf = _validate_boolean(
+        explicitly_signals_rbf,
+        field_name="explicitly_signals_rbf",
+    )
+
+    return WhyStuckDiagnosis(
+        txid=txid,
+        confirmed=True,
+        reason=WhyStuckReason.CONFIRMED,
+        reason_codes=(WhyStuckReasonCode.ALREADY_CONFIRMED,),
+        confidence=WhyStuckConfidence.HIGH,
+        constraints=(),
+        guidance=(),
+        severity=WhyStuckSeverity.INFO,
+        recommended_action=WhyStuckAction.NONE,
+        explicitly_signals_rbf=normalized_explicitly_signals_rbf,
+        can_bump_fee=False,
+        market_position=None,
+        fee_rate_sat_vb=None,
+        target_fee_rate_sat_vb=None,
+        fee_rate_shortfall_sat_vb=None,
+        summary="Transaction is already confirmed.",
+        explanation=(
+            "The backend reports that the transaction is already included "
+            "in a block, so it is not stuck in the mempool."
+        ),
+    )
+
+
+def build_insufficient_fee_evidence_diagnosis(
+    *,
+    txid: str,
+    explicitly_signals_rbf: bool,
+) -> WhyStuckDiagnosis:
+    """Build a bounded diagnosis for incomplete fee evidence."""
+    normalized_explicitly_signals_rbf = _validate_boolean(
+        explicitly_signals_rbf,
+        field_name="explicitly_signals_rbf",
+    )
+    constraints = _build_constraints(
+        explicitly_signals_rbf=normalized_explicitly_signals_rbf,
+        fee_evidence_incomplete=True,
+    )
+
+    return WhyStuckDiagnosis(
+        txid=txid,
+        confirmed=False,
+        reason=WhyStuckReason.INSUFFICIENT_EVIDENCE,
+        reason_codes=(WhyStuckReasonCode.FEE_EVIDENCE_INCOMPLETE,),
+        confidence=WhyStuckConfidence.LOW,
+        constraints=constraints,
+        guidance=(
+            WhyStuckGuidance.MONITOR,
+            WhyStuckGuidance.INSUFFICIENT_EVIDENCE,
+        ),
+        severity=WhyStuckSeverity.WARNING,
+        recommended_action=WhyStuckAction.WAIT,
+        explicitly_signals_rbf=normalized_explicitly_signals_rbf,
+        can_bump_fee=normalized_explicitly_signals_rbf,
+        market_position=None,
+        fee_rate_sat_vb=None,
+        target_fee_rate_sat_vb=None,
+        fee_rate_shortfall_sat_vb=None,
+        summary=(
+            "Fee evidence is incomplete, so a confident fee-based diagnosis is not available."
+        ),
+        explanation=(
+            "The backend did not provide enough fee evidence to derive a "
+            "trustworthy effective fee rate. MemOps will not guess whether "
+            "low fees are the cause, so the safest next step is to monitor "
+            "the transaction and retry with stronger backend evidence."
+        ),
+    )
 
 
 def apply_why_stuck_policy(
@@ -175,7 +266,7 @@ def apply_why_stuck_policy(
         msg = "unconfirmed transaction context cannot use confirmed market position"
         raise ValueError(msg)
 
-    constraints = _build_rbf_constraints(explicitly_signals_rbf=normalized_explicitly_signals_rbf)
+    constraints = _build_constraints(explicitly_signals_rbf=normalized_explicitly_signals_rbf)
 
     if context.market_position in _SEVERE_LOW_FEE_POSITIONS:
         target_fee_rate_sat_vb = _require_target_fee_rate_sat_vb(context)

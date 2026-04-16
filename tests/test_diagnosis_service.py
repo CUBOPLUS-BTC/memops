@@ -15,6 +15,7 @@ from memops.diagnostics import (
     WhyStuckGuidance,
     WhyStuckReason,
     WhyStuckReasonCode,
+    WhyStuckSeverity,
 )
 from memops.services import DiagnosedTransaction, diagnose_why_stuck
 
@@ -131,6 +132,7 @@ def test_diagnose_why_stuck_returns_replaceable_low_fee_diagnosis() -> None:
     assert diagnosed.inspection.txid == VALID_TXID
     assert diagnosed.inspection.analysis.signals_explicit_rbf is True
     assert diagnosed.summary.txid == VALID_TXID
+    assert diagnosed.fee_context is not None
     assert diagnosed.fee_context.market_position is FeeMarketPosition.BELOW_MINIMUM
     assert diagnosed.fee_context.fee_rate_sat_vb == pytest.approx(4.0)
     assert diagnosed.diagnosis.reason is WhyStuckReason.LOW_FEE
@@ -182,6 +184,7 @@ def test_diagnose_why_stuck_supports_exact_fee_evidence_without_weight() -> None
     diagnosed = diagnose_why_stuck(VALID_TXID, backend)
 
     assert diagnosed.inspection.analysis.signals_explicit_rbf is True
+    assert diagnosed.fee_context is not None
     assert diagnosed.fee_context.weight_wu is None
     assert diagnosed.fee_context.virtual_size_vbytes == 141
     assert diagnosed.fee_context.fee_rate_sat_vb == pytest.approx(2.0)
@@ -203,6 +206,7 @@ def test_diagnose_why_stuck_returns_confirmed_diagnosis_for_confirmed_transactio
     )
     diagnosed = diagnose_why_stuck(VALID_TXID, backend)
 
+    assert diagnosed.fee_context is not None
     assert diagnosed.fee_context.market_position is FeeMarketPosition.CONFIRMED
     assert diagnosed.diagnosis.reason is WhyStuckReason.CONFIRMED
     assert diagnosed.diagnosis.reason_codes == (WhyStuckReasonCode.ALREADY_CONFIRMED,)
@@ -213,6 +217,65 @@ def test_diagnose_why_stuck_returns_confirmed_diagnosis_for_confirmed_transactio
     assert diagnosed.diagnosis.confirmed is True
     assert diagnosed.diagnosis.explicitly_signals_rbf is True
     assert diagnosed.diagnosis.can_bump_fee is False
+
+
+def test_diagnose_why_stuck_returns_confirmed_diagnosis_without_exact_fee_evidence() -> None:
+    backend = StubDiagnosisBackend(
+        transaction=BackendTransaction(txid=VALID_TXID, raw_hex=SEGWIT_FINAL_HEX),
+        summary=BackendTransactionSummary(
+            txid=VALID_TXID,
+            confirmed=True,
+            weight_wu=400,
+            block_height=840000,
+            block_time=1_700_000_000,
+        ),
+    )
+    diagnosed = diagnose_why_stuck(VALID_TXID, backend)
+
+    assert diagnosed.fee_context is None
+    assert diagnosed.inspection.analysis.signals_explicit_rbf is False
+    assert diagnosed.diagnosis.reason is WhyStuckReason.CONFIRMED
+    assert diagnosed.diagnosis.reason_codes == (WhyStuckReasonCode.ALREADY_CONFIRMED,)
+    assert diagnosed.diagnosis.confidence is WhyStuckConfidence.HIGH
+    assert diagnosed.diagnosis.constraints == ()
+    assert diagnosed.diagnosis.guidance == ()
+    assert diagnosed.diagnosis.severity is WhyStuckSeverity.INFO
+    assert diagnosed.diagnosis.recommended_action is WhyStuckAction.NONE
+    assert diagnosed.diagnosis.explicitly_signals_rbf is False
+    assert diagnosed.diagnosis.can_bump_fee is False
+    assert diagnosed.diagnosis.market_position is None
+    assert diagnosed.diagnosis.fee_rate_sat_vb is None
+
+
+def test_diagnose_why_stuck_returns_insufficient_evidence_diagnosis_when_fee_evidence_is_incomplete() -> (
+    None
+):
+    backend = StubDiagnosisBackend(
+        transaction=BackendTransaction(txid=VALID_TXID, raw_hex=NON_SEGWIT_RBF_HEX),
+        summary=BackendTransactionSummary(
+            txid=VALID_TXID,
+            confirmed=False,
+            weight_wu=400,
+        ),
+    )
+    diagnosed = diagnose_why_stuck(VALID_TXID, backend)
+
+    assert diagnosed.fee_context is None
+    assert diagnosed.inspection.analysis.signals_explicit_rbf is True
+    assert diagnosed.diagnosis.reason is WhyStuckReason.INSUFFICIENT_EVIDENCE
+    assert diagnosed.diagnosis.reason_codes == (WhyStuckReasonCode.FEE_EVIDENCE_INCOMPLETE,)
+    assert diagnosed.diagnosis.confidence is WhyStuckConfidence.LOW
+    assert diagnosed.diagnosis.constraints == (WhyStuckConstraint.FEE_EVIDENCE_INCOMPLETE,)
+    assert diagnosed.diagnosis.guidance == (
+        WhyStuckGuidance.MONITOR,
+        WhyStuckGuidance.INSUFFICIENT_EVIDENCE,
+    )
+    assert diagnosed.diagnosis.severity is WhyStuckSeverity.WARNING
+    assert diagnosed.diagnosis.recommended_action is WhyStuckAction.WAIT
+    assert diagnosed.diagnosis.explicitly_signals_rbf is True
+    assert diagnosed.diagnosis.can_bump_fee is True
+    assert diagnosed.diagnosis.market_position is None
+    assert diagnosed.diagnosis.fee_rate_sat_vb is None
 
 
 def test_diagnose_why_stuck_rejects_mismatched_summary_txid() -> None:
@@ -229,19 +292,6 @@ def test_diagnose_why_stuck_rejects_mismatched_summary_txid() -> None:
         ValueError,
         match="backend transaction summary txid does not match inspected transaction",
     ):
-        diagnose_why_stuck(VALID_TXID, backend)
-
-
-def test_diagnose_why_stuck_rejects_incomplete_fee_evidence() -> None:
-    backend = StubDiagnosisBackend(
-        transaction=BackendTransaction(txid=VALID_TXID, raw_hex=NON_SEGWIT_RBF_HEX),
-        summary=BackendTransactionSummary(
-            txid=VALID_TXID,
-            confirmed=False,
-            weight_wu=400,
-        ),
-    )
-    with pytest.raises(ValueError, match="requires exact fee evidence"):
         diagnose_why_stuck(VALID_TXID, backend)
 
 

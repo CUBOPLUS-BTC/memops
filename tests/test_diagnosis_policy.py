@@ -11,6 +11,8 @@ from memops.diagnostics import (
     WhyStuckReasonCode,
     WhyStuckSeverity,
     apply_why_stuck_policy,
+    build_confirmed_why_stuck_diagnosis,
+    build_insufficient_fee_evidence_diagnosis,
     build_transaction_fee_context,
 )
 
@@ -45,6 +47,63 @@ def test_apply_why_stuck_policy_rejects_non_boolean_rbf_flag() -> None:
             context,  # type: ignore[arg-type]
             explicitly_signals_rbf="yes",  # type: ignore[arg-type]
         )
+
+
+def test_build_confirmed_why_stuck_diagnosis_supports_missing_fee_context() -> None:
+    diagnosis = build_confirmed_why_stuck_diagnosis(
+        txid=VALID_TXID,
+        explicitly_signals_rbf=False,
+    )
+
+    assert isinstance(diagnosis, WhyStuckDiagnosis)
+    assert diagnosis.txid == VALID_TXID
+    assert diagnosis.confirmed is True
+    assert diagnosis.reason is WhyStuckReason.CONFIRMED
+    assert diagnosis.reason_codes == (WhyStuckReasonCode.ALREADY_CONFIRMED,)
+    assert diagnosis.confidence is WhyStuckConfidence.HIGH
+    assert diagnosis.constraints == ()
+    assert diagnosis.guidance == ()
+    assert diagnosis.severity is WhyStuckSeverity.INFO
+    assert diagnosis.recommended_action is WhyStuckAction.NONE
+    assert diagnosis.explicitly_signals_rbf is False
+    assert diagnosis.can_bump_fee is False
+    assert diagnosis.market_position is None
+    assert diagnosis.fee_rate_sat_vb is None
+    assert diagnosis.target_fee_rate_sat_vb is None
+    assert diagnosis.fee_rate_shortfall_sat_vb is None
+    assert diagnosis.summary == "Transaction is already confirmed."
+    assert "already included in a block" in diagnosis.explanation
+
+
+def test_build_insufficient_fee_evidence_diagnosis_surfaces_constraints() -> None:
+    diagnosis = build_insufficient_fee_evidence_diagnosis(
+        txid=VALID_TXID,
+        explicitly_signals_rbf=False,
+    )
+
+    assert diagnosis.txid == VALID_TXID
+    assert diagnosis.confirmed is False
+    assert diagnosis.reason is WhyStuckReason.INSUFFICIENT_EVIDENCE
+    assert diagnosis.reason_codes == (WhyStuckReasonCode.FEE_EVIDENCE_INCOMPLETE,)
+    assert diagnosis.confidence is WhyStuckConfidence.LOW
+    assert diagnosis.constraints == (
+        WhyStuckConstraint.FEE_EVIDENCE_INCOMPLETE,
+        WhyStuckConstraint.EXPLICIT_RBF_NOT_SIGNALED,
+    )
+    assert diagnosis.guidance == (
+        WhyStuckGuidance.MONITOR,
+        WhyStuckGuidance.INSUFFICIENT_EVIDENCE,
+    )
+    assert diagnosis.severity is WhyStuckSeverity.WARNING
+    assert diagnosis.recommended_action is WhyStuckAction.WAIT
+    assert diagnosis.explicitly_signals_rbf is False
+    assert diagnosis.can_bump_fee is False
+    assert diagnosis.market_position is None
+    assert diagnosis.fee_rate_sat_vb is None
+    assert diagnosis.target_fee_rate_sat_vb is None
+    assert diagnosis.fee_rate_shortfall_sat_vb is None
+    assert "Fee evidence is incomplete" in diagnosis.summary
+    assert "did not provide enough fee evidence" in diagnosis.explanation
 
 
 def test_apply_why_stuck_policy_returns_confirmed_diagnosis() -> None:
