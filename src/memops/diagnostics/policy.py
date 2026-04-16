@@ -30,6 +30,45 @@ class WhyStuckReason(StrEnum):
     COMPETITIVE_FEE = "competitive_fee"
 
 
+class WhyStuckReasonCode(StrEnum):
+    """Structured reason codes for why-stuck diagnosis."""
+
+    ALREADY_CONFIRMED = "already_confirmed"
+    FEE_BELOW_RECOMMENDED_BAND = "fee_below_recommended_band"
+    FEE_NEAR_RECOMMENDED_BAND_BUT_CONFIRMATION_NOT_GUARANTEED = (
+        "fee_near_recommended_band_but_confirmation_not_guaranteed"
+    )
+    EXPLICIT_RBF_NOT_SIGNALED = "explicit_rbf_not_signaled"
+    FEE_EVIDENCE_INCOMPLETE = "fee_evidence_incomplete"
+    NO_CLEAR_FEE_PRESSURE_SIGNAL = "no_clear_fee_pressure_signal"
+
+
+class WhyStuckConfidence(StrEnum):
+    """Confidence levels for why-stuck diagnosis results."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class WhyStuckConstraint(StrEnum):
+    """Known blockers or limits that affect next-step guidance."""
+
+    EXPLICIT_RBF_NOT_SIGNALED = "explicit_rbf_not_signaled"
+    FEE_EVIDENCE_INCOMPLETE = "fee_evidence_incomplete"
+
+
+class WhyStuckGuidance(StrEnum):
+    """Bounded next-step guidance emitted by the diagnosis policy."""
+
+    WAIT = "wait"
+    MONITOR = "monitor"
+    POSSIBLE_RBF_CANDIDATE = "possible_rbf_candidate"
+    POSSIBLE_MANUAL_CPFP = "possible_manual_cpfp"
+    REBROADCAST_CHECK = "rebroadcast_check"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+
+
 class WhyStuckAction(StrEnum):
     """Recommended next action for the user."""
 
@@ -54,12 +93,16 @@ class WhyStuckDiagnosis:
     txid: str
     confirmed: bool
     reason: WhyStuckReason
+    reason_codes: tuple[WhyStuckReasonCode, ...]
+    confidence: WhyStuckConfidence
+    constraints: tuple[WhyStuckConstraint, ...]
+    guidance: tuple[WhyStuckGuidance, ...]
     severity: WhyStuckSeverity
     recommended_action: WhyStuckAction
     explicitly_signals_rbf: bool
     can_bump_fee: bool
-    market_position: FeeMarketPosition
-    fee_rate_sat_vb: float
+    market_position: FeeMarketPosition | None
+    fee_rate_sat_vb: float | None
     target_fee_rate_sat_vb: int | None
     fee_rate_shortfall_sat_vb: float | None
     summary: str
@@ -83,6 +126,13 @@ def _require_target_fee_rate_sat_vb(context: TransactionFeeContext) -> int:
     return target_fee_rate_sat_vb
 
 
+def _build_rbf_constraints(*, explicitly_signals_rbf: bool) -> tuple[WhyStuckConstraint, ...]:
+    """Return structured next-step constraints related to explicit RBF signaling."""
+    if explicitly_signals_rbf:
+        return ()
+    return (WhyStuckConstraint.EXPLICIT_RBF_NOT_SIGNALED,)
+
+
 def apply_why_stuck_policy(
     context: TransactionFeeContext,
     *,
@@ -98,11 +148,14 @@ def apply_why_stuck_policy(
         if context.market_position is not FeeMarketPosition.CONFIRMED:
             msg = "confirmed transaction context must use confirmed market position"
             raise ValueError(msg)
-
         return WhyStuckDiagnosis(
             txid=context.txid,
             confirmed=True,
             reason=WhyStuckReason.CONFIRMED,
+            reason_codes=(WhyStuckReasonCode.ALREADY_CONFIRMED,),
+            confidence=WhyStuckConfidence.HIGH,
+            constraints=(),
+            guidance=(),
             severity=WhyStuckSeverity.INFO,
             recommended_action=WhyStuckAction.NONE,
             explicitly_signals_rbf=normalized_explicitly_signals_rbf,
@@ -122,6 +175,8 @@ def apply_why_stuck_policy(
         msg = "unconfirmed transaction context cannot use confirmed market position"
         raise ValueError(msg)
 
+    constraints = _build_rbf_constraints(explicitly_signals_rbf=normalized_explicitly_signals_rbf)
+
     if context.market_position in _SEVERE_LOW_FEE_POSITIONS:
         target_fee_rate_sat_vb = _require_target_fee_rate_sat_vb(context)
 
@@ -130,6 +185,10 @@ def apply_why_stuck_policy(
                 txid=context.txid,
                 confirmed=False,
                 reason=WhyStuckReason.LOW_FEE,
+                reason_codes=(WhyStuckReasonCode.FEE_BELOW_RECOMMENDED_BAND,),
+                confidence=WhyStuckConfidence.HIGH,
+                constraints=constraints,
+                guidance=(WhyStuckGuidance.POSSIBLE_RBF_CANDIDATE,),
                 severity=WhyStuckSeverity.HIGH,
                 recommended_action=WhyStuckAction.BUMP_FEE_RBF,
                 explicitly_signals_rbf=True,
@@ -152,6 +211,13 @@ def apply_why_stuck_policy(
             txid=context.txid,
             confirmed=False,
             reason=WhyStuckReason.LOW_FEE,
+            reason_codes=(WhyStuckReasonCode.FEE_BELOW_RECOMMENDED_BAND,),
+            confidence=WhyStuckConfidence.HIGH,
+            constraints=constraints,
+            guidance=(
+                WhyStuckGuidance.POSSIBLE_MANUAL_CPFP,
+                WhyStuckGuidance.MONITOR,
+            ),
             severity=WhyStuckSeverity.HIGH,
             recommended_action=WhyStuckAction.CONSIDER_MANUAL_CPFP,
             explicitly_signals_rbf=False,
@@ -179,6 +245,15 @@ def apply_why_stuck_policy(
             txid=context.txid,
             confirmed=False,
             reason=WhyStuckReason.FEE_BELOW_PRIORITY_BAND,
+            reason_codes=(
+                WhyStuckReasonCode.FEE_NEAR_RECOMMENDED_BAND_BUT_CONFIRMATION_NOT_GUARANTEED,
+            ),
+            confidence=WhyStuckConfidence.MEDIUM,
+            constraints=constraints,
+            guidance=(
+                WhyStuckGuidance.WAIT,
+                WhyStuckGuidance.MONITOR,
+            ),
             severity=WhyStuckSeverity.WARNING,
             recommended_action=WhyStuckAction.WAIT,
             explicitly_signals_rbf=normalized_explicitly_signals_rbf,
@@ -201,6 +276,13 @@ def apply_why_stuck_policy(
             txid=context.txid,
             confirmed=False,
             reason=WhyStuckReason.COMPETITIVE_FEE,
+            reason_codes=(WhyStuckReasonCode.NO_CLEAR_FEE_PRESSURE_SIGNAL,),
+            confidence=WhyStuckConfidence.LOW,
+            constraints=constraints,
+            guidance=(
+                WhyStuckGuidance.MONITOR,
+                WhyStuckGuidance.REBROADCAST_CHECK,
+            ),
             severity=WhyStuckSeverity.INFO,
             recommended_action=WhyStuckAction.WAIT,
             explicitly_signals_rbf=normalized_explicitly_signals_rbf,
