@@ -18,6 +18,8 @@ from .policy import (
     WhyStuckReasonCode,
     WhyStuckSeverity,
     apply_why_stuck_policy,
+    build_confirmed_why_stuck_diagnosis,
+    build_insufficient_fee_evidence_diagnosis,
 )
 
 __all__ = [
@@ -32,6 +34,8 @@ __all__ = [
     "WhyStuckReasonCode",
     "WhyStuckSeverity",
     "apply_why_stuck_policy",
+    "build_confirmed_why_stuck_diagnosis",
+    "build_insufficient_fee_evidence_diagnosis",
     "build_transaction_fee_context",
     "calculate_fee_rate_sat_vb",
     "classify_fee_market_position",
