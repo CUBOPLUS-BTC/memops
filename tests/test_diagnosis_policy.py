@@ -3,8 +3,12 @@ import pytest
 from memops.backends import BackendFeeRecommendations, BackendTransactionSummary
 from memops.diagnostics import (
     WhyStuckAction,
+    WhyStuckConfidence,
+    WhyStuckConstraint,
     WhyStuckDiagnosis,
+    WhyStuckGuidance,
     WhyStuckReason,
+    WhyStuckReasonCode,
     WhyStuckSeverity,
     apply_why_stuck_policy,
     build_transaction_fee_context,
@@ -36,7 +40,6 @@ def make_context(
 
 def test_apply_why_stuck_policy_rejects_non_boolean_rbf_flag() -> None:
     context = make_context(fee_sats=400)
-
     with pytest.raises(ValueError, match="explicitly_signals_rbf must be a boolean"):
         apply_why_stuck_policy(
             context,  # type: ignore[arg-type]
@@ -49,7 +52,6 @@ def test_apply_why_stuck_policy_returns_confirmed_diagnosis() -> None:
         fee_sats=1200,
         confirmed=True,
     )
-
     diagnosis = apply_why_stuck_policy(
         context,  # type: ignore[arg-type]
         explicitly_signals_rbf=True,
@@ -59,6 +61,10 @@ def test_apply_why_stuck_policy_returns_confirmed_diagnosis() -> None:
     assert diagnosis.txid == VALID_TXID
     assert diagnosis.confirmed is True
     assert diagnosis.reason is WhyStuckReason.CONFIRMED
+    assert diagnosis.reason_codes == (WhyStuckReasonCode.ALREADY_CONFIRMED,)
+    assert diagnosis.confidence is WhyStuckConfidence.HIGH
+    assert diagnosis.constraints == ()
+    assert diagnosis.guidance == ()
     assert diagnosis.severity is WhyStuckSeverity.INFO
     assert diagnosis.recommended_action is WhyStuckAction.NONE
     assert diagnosis.explicitly_signals_rbf is True
@@ -71,13 +77,16 @@ def test_apply_why_stuck_policy_returns_confirmed_diagnosis() -> None:
 
 def test_apply_why_stuck_policy_returns_low_fee_replaceable_diagnosis() -> None:
     context = make_context(fee_sats=400)
-
     diagnosis = apply_why_stuck_policy(
         context,  # type: ignore[arg-type]
         explicitly_signals_rbf=True,
     )
 
     assert diagnosis.reason is WhyStuckReason.LOW_FEE
+    assert diagnosis.reason_codes == (WhyStuckReasonCode.FEE_BELOW_RECOMMENDED_BAND,)
+    assert diagnosis.confidence is WhyStuckConfidence.HIGH
+    assert diagnosis.constraints == ()
+    assert diagnosis.guidance == (WhyStuckGuidance.POSSIBLE_RBF_CANDIDATE,)
     assert diagnosis.severity is WhyStuckSeverity.HIGH
     assert diagnosis.recommended_action is WhyStuckAction.BUMP_FEE_RBF
     assert diagnosis.explicitly_signals_rbf is True
@@ -90,13 +99,19 @@ def test_apply_why_stuck_policy_returns_low_fee_replaceable_diagnosis() -> None:
 
 def test_apply_why_stuck_policy_returns_low_fee_final_diagnosis() -> None:
     context = make_context(fee_sats=900)
-
     diagnosis = apply_why_stuck_policy(
         context,  # type: ignore[arg-type]
         explicitly_signals_rbf=False,
     )
 
     assert diagnosis.reason is WhyStuckReason.LOW_FEE
+    assert diagnosis.reason_codes == (WhyStuckReasonCode.FEE_BELOW_RECOMMENDED_BAND,)
+    assert diagnosis.confidence is WhyStuckConfidence.HIGH
+    assert diagnosis.constraints == (WhyStuckConstraint.EXPLICIT_RBF_NOT_SIGNALED,)
+    assert diagnosis.guidance == (
+        WhyStuckGuidance.POSSIBLE_MANUAL_CPFP,
+        WhyStuckGuidance.MONITOR,
+    )
     assert diagnosis.severity is WhyStuckSeverity.HIGH
     assert diagnosis.recommended_action is WhyStuckAction.CONSIDER_MANUAL_CPFP
     assert diagnosis.explicitly_signals_rbf is False
@@ -109,13 +124,21 @@ def test_apply_why_stuck_policy_returns_low_fee_final_diagnosis() -> None:
 
 def test_apply_why_stuck_policy_returns_wait_diagnosis_for_priority_gap() -> None:
     context = make_context(fee_sats=1200)
-
     diagnosis = apply_why_stuck_policy(
         context,  # type: ignore[arg-type]
         explicitly_signals_rbf=True,
     )
 
     assert diagnosis.reason is WhyStuckReason.FEE_BELOW_PRIORITY_BAND
+    assert diagnosis.reason_codes == (
+        WhyStuckReasonCode.FEE_NEAR_RECOMMENDED_BAND_BUT_CONFIRMATION_NOT_GUARANTEED,
+    )
+    assert diagnosis.confidence is WhyStuckConfidence.MEDIUM
+    assert diagnosis.constraints == ()
+    assert diagnosis.guidance == (
+        WhyStuckGuidance.WAIT,
+        WhyStuckGuidance.MONITOR,
+    )
     assert diagnosis.severity is WhyStuckSeverity.WARNING
     assert diagnosis.recommended_action is WhyStuckAction.WAIT
     assert diagnosis.explicitly_signals_rbf is True
@@ -126,15 +149,42 @@ def test_apply_why_stuck_policy_returns_wait_diagnosis_for_priority_gap() -> Non
     assert "not deeply underpriced" in diagnosis.explanation
 
 
+def test_apply_why_stuck_policy_surfaces_no_rbf_constraint_for_priority_gap() -> None:
+    context = make_context(fee_sats=1200)
+    diagnosis = apply_why_stuck_policy(
+        context,  # type: ignore[arg-type]
+        explicitly_signals_rbf=False,
+    )
+
+    assert diagnosis.reason is WhyStuckReason.FEE_BELOW_PRIORITY_BAND
+    assert diagnosis.reason_codes == (
+        WhyStuckReasonCode.FEE_NEAR_RECOMMENDED_BAND_BUT_CONFIRMATION_NOT_GUARANTEED,
+    )
+    assert diagnosis.confidence is WhyStuckConfidence.MEDIUM
+    assert diagnosis.constraints == (WhyStuckConstraint.EXPLICIT_RBF_NOT_SIGNALED,)
+    assert diagnosis.guidance == (
+        WhyStuckGuidance.WAIT,
+        WhyStuckGuidance.MONITOR,
+    )
+    assert diagnosis.recommended_action is WhyStuckAction.WAIT
+    assert diagnosis.can_bump_fee is False
+
+
 def test_apply_why_stuck_policy_returns_wait_diagnosis_for_competitive_fee() -> None:
     context = make_context(fee_sats=2600)
-
     diagnosis = apply_why_stuck_policy(
         context,  # type: ignore[arg-type]
         explicitly_signals_rbf=False,
     )
 
     assert diagnosis.reason is WhyStuckReason.COMPETITIVE_FEE
+    assert diagnosis.reason_codes == (WhyStuckReasonCode.NO_CLEAR_FEE_PRESSURE_SIGNAL,)
+    assert diagnosis.confidence is WhyStuckConfidence.LOW
+    assert diagnosis.constraints == (WhyStuckConstraint.EXPLICIT_RBF_NOT_SIGNALED,)
+    assert diagnosis.guidance == (
+        WhyStuckGuidance.MONITOR,
+        WhyStuckGuidance.REBROADCAST_CHECK,
+    )
     assert diagnosis.severity is WhyStuckSeverity.INFO
     assert diagnosis.recommended_action is WhyStuckAction.WAIT
     assert diagnosis.explicitly_signals_rbf is False

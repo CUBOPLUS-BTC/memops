@@ -10,8 +10,12 @@ from .fee_context import (
 )
 from .policy import (
     WhyStuckAction,
+    WhyStuckConfidence,
+    WhyStuckConstraint,
     WhyStuckDiagnosis,
+    WhyStuckGuidance,
     WhyStuckReason,
+    WhyStuckReasonCode,
     WhyStuckSeverity,
     apply_why_stuck_policy,
 )
@@ -20,8 +24,12 @@ __all__ = [
     "FeeMarketPosition",
     "TransactionFeeContext",
     "WhyStuckAction",
+    "WhyStuckConfidence",
+    "WhyStuckConstraint",
     "WhyStuckDiagnosis",
+    "WhyStuckGuidance",
     "WhyStuckReason",
+    "WhyStuckReasonCode",
     "WhyStuckSeverity",
     "apply_why_stuck_policy",
     "build_transaction_fee_context",
