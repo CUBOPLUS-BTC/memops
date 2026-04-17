@@ -247,9 +247,10 @@ def test_diagnose_why_stuck_returns_confirmed_diagnosis_without_exact_fee_eviden
     assert diagnosed.diagnosis.fee_rate_sat_vb is None
 
 
-def test_diagnose_why_stuck_returns_insufficient_evidence_diagnosis_when_fee_evidence_is_incomplete() -> (
+def test_diagnose_why_stuck_returns_insuff_evidence_diagnosis_when_fee_evidence_is_incomplete() -> (
     None
 ):
+
     backend = StubDiagnosisBackend(
         transaction=BackendTransaction(txid=VALID_TXID, raw_hex=NON_SEGWIT_RBF_HEX),
         summary=BackendTransactionSummary(
